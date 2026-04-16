@@ -2,9 +2,10 @@ import React, { createContext, useContext, useState, useCallback, useMemo, useEf
 import type { Session } from '@supabase/supabase-js';
 import type { AppAccessRole, AppSectionId, CurrentUser, UserRole } from '../types';
 import { useAppContext } from './AppContext';
-import { buildPermissionStrings } from '../lib/appSettings';
+import { useAuth } from './AuthContext';
+import { buildPermissionStrings, ACCESS_ROLE_LABEL } from '../lib/appSettings';
 import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
-import { normalizeAccessRole } from '../lib/profileRole';
+import { formatDbAccessRole } from '../lib/formatDbRole';
 
 function userFromSession(session: Session): CurrentUser {
   const u = session.user;
@@ -32,6 +33,8 @@ interface UserContextType {
   setCurrentUser: React.Dispatch<React.SetStateAction<CurrentUser>>;
   /** @deprecated Use currentUser; kept for legacy components. */
   user: CurrentUser;
+  /** Label for UI: derived from DB `access_role` when present, else from effective role. */
+  roleLabel: string;
   logout: () => Promise<void>;
   isAdmin: boolean;
   isAgent: boolean;
@@ -44,8 +47,8 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export const UserProvider: React.FC<{ children: ReactNode; session: Session }> = ({ children, session }) => {
   const { appSettings } = useAppContext();
+  const { profile, profileLoading } = useAuth();
   const [currentUser, setCurrentUserState] = useState<CurrentUser>(() => userFromSession(session));
-  const [profileSynced, setProfileSynced] = useState(false);
 
   const setCurrentUser: React.Dispatch<React.SetStateAction<CurrentUser>> = useCallback((action) => {
     setCurrentUserState((prev) => {
@@ -59,75 +62,34 @@ export const UserProvider: React.FC<{ children: ReactNode; session: Session }> =
   }, [session.user.id]);
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) {
-      setProfileSynced(true);
-      return;
+    const base = userFromSession(session);
+    if (profile) {
+      setCurrentUserState({
+        ...base,
+        accessRole: profile.accessRole,
+        name: profile.fullName || base.name,
+        avatar: profile.avatarUrl || base.avatar,
+        profilePermissions: profile.profilePermissions,
+        legacyRole: profile.legacyRole,
+        permissions: [],
+      });
+    } else {
+      setCurrentUserState(base);
     }
-    const uid = session.user.id;
-    const email = session.user.email ?? '';
-    let cancelled = false;
-    setProfileSynced(false);
-
-    void (async () => {
-      try {
-        const sb = getSupabase();
-        let { data, error } = await sb
-          .from('profiles')
-          .select('access_role, legacy_role, permissions, full_name, avatar_url')
-          .eq('user_id', uid)
-          .maybeSingle();
-
-        if (!data && email) {
-          const second = await sb
-            .from('profiles')
-            .select('access_role, legacy_role, permissions, full_name, avatar_url')
-            .eq('email', email)
-            .maybeSingle();
-          data = second.data;
-          error = second.error;
-        }
-
-        if (cancelled) return;
-        if (error || !data) {
-          return;
-        }
-
-        const permsRaw = data.permissions;
-        const profilePermissions =
-          Array.isArray(permsRaw) &&
-          permsRaw.length > 0 &&
-          permsRaw.every((x: unknown) => typeof x === 'string')
-            ? (permsRaw as string[])
-            : undefined;
-
-        const accessRole = normalizeAccessRole(data.access_role as string);
-
-        setCurrentUserState((u) => ({
-          ...u,
-          accessRole,
-          ...(typeof data.full_name === 'string' && data.full_name ? { name: data.full_name } : {}),
-          ...(typeof data.avatar_url === 'string' && data.avatar_url ? { avatar: data.avatar_url } : {}),
-          ...(typeof data.legacy_role === 'string' ? { legacyRole: data.legacy_role as UserRole } : {}),
-          profilePermissions,
-          permissions: [],
-        }));
-      } catch {
-        /* offline / RLS */
-      } finally {
-        if (!cancelled) setProfileSynced(true);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [session.user.id, session.user.email]);
+  }, [session.user.id, session.user.email, profile]);
 
   const effectiveAccessRole = useMemo((): AppAccessRole => {
     const o = appSettings.staffAccess[currentUser.id];
     if (o?.active === false) return currentUser.accessRole;
     return o?.role ?? currentUser.accessRole;
   }, [appSettings.staffAccess, currentUser.id, currentUser.accessRole]);
+
+  const roleLabel = useMemo(() => {
+    if (profile?.rawAccessRole) {
+      return formatDbAccessRole(profile.rawAccessRole);
+    }
+    return ACCESS_ROLE_LABEL[effectiveAccessRole];
+  }, [profile?.rawAccessRole, effectiveAccessRole]);
 
   const permissions = useMemo(() => {
     if (effectiveAccessRole === 'SUPERADMIN') {
@@ -156,7 +118,10 @@ export const UserProvider: React.FC<{ children: ReactNode; session: Session }> =
         return true;
       }
       if (currentUser.profilePermissions?.length) {
-        return currentUser.profilePermissions.includes(`${sid}:${mode}`);
+        const key = `${sid}:${mode}`;
+        if (currentUser.profilePermissions.includes(key)) return true;
+        if (mode === 'view' && currentUser.profilePermissions.includes(`${sid}:edit`)) return true;
+        return false;
       }
       const cell = appSettings.permissionsByRole[effectiveAccessRole]?.[sid];
       if (!cell) return false;
@@ -188,6 +153,7 @@ export const UserProvider: React.FC<{ children: ReactNode; session: Session }> =
       currentUser: currentUserWithPerms,
       setCurrentUser,
       user: currentUserWithPerms,
+      roleLabel,
       logout,
       isAdmin,
       isAgent,
@@ -195,16 +161,28 @@ export const UserProvider: React.FC<{ children: ReactNode; session: Session }> =
       hasPermission,
       effectiveAccessRole,
     }),
-    [currentUserWithPerms, setCurrentUser, logout, isAdmin, isAgent, isViewer, hasPermission, effectiveAccessRole]
+    [
+      currentUserWithPerms,
+      setCurrentUser,
+      roleLabel,
+      logout,
+      isAdmin,
+      isAgent,
+      isViewer,
+      hasPermission,
+      effectiveAccessRole,
+    ]
   );
+
+  const gateLoading = isSupabaseConfigured() && profileLoading;
 
   return (
     <UserContext.Provider value={value}>
-      {!profileSynced ? (
+      {gateLoading ? (
         <div className="min-h-screen flex items-center justify-center bg-[var(--app-shell-bg)] p-6">
           <div className="glass-panel rounded-2xl px-10 py-8 text-center border-white/30 shadow-xl">
             <p className="text-sm font-semibold text-slate-700">Loading your workspace…</p>
-            <p className="text-xs text-slate-500 mt-2">Syncing profile and permissions</p>
+            <p className="text-xs text-slate-500 mt-2">Syncing profile and permissions from Supabase</p>
           </div>
         </div>
       ) : (

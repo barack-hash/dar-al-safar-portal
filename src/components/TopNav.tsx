@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { Bell, Search, Menu, AlertCircle, Clock } from 'lucide-react';
 import { useUser } from '../contexts/UserContext';
-import { ACCESS_ROLE_LABEL } from '../lib/appSettings';
 import { useClientsContext } from '../contexts/AppContext';
 import { motion, AnimatePresence } from 'motion/react';
 
 export const TopNav: React.FC = () => {
-  const { user, effectiveAccessRole } = useUser();
+  const { user, roleLabel } = useUser();
   const { expiringHolds, urgentVisas, clients } = useClientsContext();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
@@ -127,7 +126,7 @@ export const TopNav: React.FC = () => {
           <div className="text-right hidden sm:block">
             <p className="text-sm font-medium text-charcoal">{user.name}</p>
             <p className="text-[10px] uppercase tracking-widest text-sand-gold font-semibold">
-              {ACCESS_ROLE_LABEL[effectiveAccessRole]}
+              {roleLabel}
             </p>
           </div>
           <div className="w-10 h-10 rounded-full border-2 border-sand-gold/30 p-0.5">

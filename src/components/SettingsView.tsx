@@ -55,7 +55,7 @@ function Toggle({
 
 export const SettingsView: React.FC = () => {
   const { employees, appSettings, setAppSettings } = useAppContext();
-  const { hasPermission, currentUser, effectiveAccessRole } = useUser();
+  const { hasPermission, currentUser, effectiveAccessRole, roleLabel } = useUser();
   const [tab, setTab] = useState<SettingsTab>('users');
 
   const canEditSettings = hasPermission('settings', 'edit');
@@ -117,7 +117,7 @@ export const SettingsView: React.FC = () => {
           <div className="text-left">
             <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">Signed in</p>
             <p className="text-sm font-bold truncate max-w-[200px]">{currentUser.name}</p>
-            <p className="text-[10px] text-emerald-300 font-semibold">{ACCESS_ROLE_LABEL[effectiveAccessRole]}</p>
+            <p className="text-[10px] text-emerald-300 font-semibold">{roleLabel}</p>
           </div>
         </div>
       </header>
@@ -217,7 +217,7 @@ export const SettingsView: React.FC = () => {
           <div className="px-8 py-6 border-b border-slate-100">
             <h2 className="text-lg font-black text-slate-900">Permissions matrix</h2>
             <p className="text-xs text-slate-500 font-medium mt-1 max-w-2xl">
-              Super Admin always retains full access. Tune Manager and Agent scopes — view gates navigation; edit gates
+              Super Admin always retains full access. Tune Manager and other role scopes — view gates navigation; edit gates
               mutating actions inside a module.
             </p>
           </div>

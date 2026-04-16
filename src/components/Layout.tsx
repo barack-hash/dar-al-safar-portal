@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useUI, useClientsContext } from '../contexts/AppContext';
 import { useUser } from '../contexts/UserContext';
 import { Currency, type AppSectionId } from '../types';
-import { ACCESS_ROLE_LABEL } from '../lib/appSettings';
 import { toast } from 'sonner';
 import { 
   LayoutGrid, 
@@ -51,7 +50,7 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, isOpen, onClose }) => {
-  const { hasPermission, currentUser, effectiveAccessRole } = useUser();
+  const { hasPermission, currentUser, effectiveAccessRole, roleLabel } = useUser();
   const navItems = useMemo(
     () =>
       [
@@ -64,8 +63,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, isOpen, on
         { id: 'visa' as Tab, label: 'Visa/Events', icon: Star },
         { id: 'insights' as Tab, label: 'Insights', icon: BarChart3 },
         { id: 'settings' as Tab, label: 'Settings', icon: Settings },
-      ].filter((item) => hasPermission(item.id, 'view')),
-    [hasPermission]
+      ].filter(
+        (item) =>
+          effectiveAccessRole === 'SUPERADMIN' ||
+          hasPermission(item.id, 'view')
+      ),
+    [hasPermission, effectiveAccessRole]
   );
 
   return (
@@ -124,7 +127,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, isOpen, on
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold text-slate-900 truncate">{currentUser.name}</p>
-            <p className="text-[10px] text-slate-500 truncate">{ACCESS_ROLE_LABEL[effectiveAccessRole]}</p>
+            <p className="text-[10px] text-slate-500 truncate">{roleLabel}</p>
           </div>
         </div>
       </div>
@@ -135,7 +138,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, isOpen, on
 export const TopNav: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) => {
   const { searchQuery, setSearchQuery, currency, setCurrency, setCurrentTab } = useUI();
   const { visas, clients, expiringHolds } = useClientsContext();
-  const { currentUser, effectiveAccessRole, logout } = useUser();
+  const { currentUser, roleLabel, logout } = useUser();
   const [profileOpen, setProfileOpen] = useState(false);
   const [currencyOpen, setCurrencyOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -394,7 +397,7 @@ export const TopNav: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) =
             </div>
             <div className="text-left hidden lg:block min-w-0">
               <p className="text-sm font-semibold text-slate-900 truncate max-w-[120px]">{currentUser.name}</p>
-              <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">{ACCESS_ROLE_LABEL[effectiveAccessRole]}</p>
+              <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">{roleLabel}</p>
             </div>
             <ChevronDown size={16} className={`text-slate-400 hidden sm:block transition-transform duration-300 ${profileOpen ? 'rotate-180' : ''}`} />
           </button>

@@ -31,7 +31,7 @@ const NavItem: React.FC<{ icon: React.ReactNode; label: string; active?: boolean
 );
 
 export const Sidebar: React.FC<{ currentView: string; setView: (view: any) => void; onClose?: () => void }> = ({ currentView, setView, onClose }) => {
-  const { logout, isAdmin, isAgent, isViewer } = useUser();
+  const { logout, isAdmin, isViewer, effectiveAccessRole } = useUser();
 
   return (
     <div className="w-72 h-screen glass-dark flex flex-col p-6 sticky top-0">
@@ -60,7 +60,7 @@ export const Sidebar: React.FC<{ currentView: string; setView: (view: any) => vo
         
         <NavItem icon={<BookOpen size={20} />} label="Editorial" active={currentView === 'editorial'} onClick={() => setView('editorial')} />
         
-        {isAgent && (
+        {effectiveAccessRole === 'AGENT' && !isAdmin && (
           <NavItem icon={<ListTodo size={20} />} label="My Assignments" active={currentView === 'assignments'} onClick={() => setView('assignments')} />
         )}
         
@@ -78,7 +78,7 @@ export const Sidebar: React.FC<{ currentView: string; setView: (view: any) => vo
 
       <div className="mt-auto pt-6 border-t border-white/10">
         <button 
-          onClick={logout}
+          onClick={() => void logout()}
           className="w-full flex items-center gap-4 px-4 py-3 rounded-xl text-red-400/60 hover:bg-red-500/10 hover:text-red-400 transition-all duration-300"
         >
           <LogOut size={20} />
