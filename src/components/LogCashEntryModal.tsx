@@ -78,9 +78,9 @@ export const LogCashEntryModal: React.FC<LogCashEntryModalProps> = ({ isOpen, on
   );
   const showCreateOption = trimmedReceived.length > 0 && !exactStaffMatch;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.staff?.trim()) {
       toast.error('Please enter who funds were received from (staff or one-time name).');
       return;
@@ -98,15 +98,18 @@ export const LogCashEntryModal: React.FC<LogCashEntryModalProps> = ({ isOpen, on
       staff: formData.staff,
       notes: formData.notes,
       status: formData.status,
-      category: formData.category
+      category: formData.category,
     };
 
-    addCashLogEntry(entry);
-    toast.success('Cash entry logged successfully');
-    onClose();
-    
-    setFormData(emptyCashForm());
-    setReceivedInput('');
+    try {
+      await addCashLogEntry(entry);
+      toast.success('Cash entry logged successfully');
+      onClose();
+      setFormData(emptyCashForm());
+      setReceivedInput('');
+    } catch {
+      /* toast from hook */
+    }
   };
 
   if (!isOpen) return null;

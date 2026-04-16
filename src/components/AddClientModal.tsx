@@ -22,26 +22,29 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({ isOpen, onClose 
   });
   const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.passportID || !formData.expiryDate || !formData.nationality) {
       setError('Name, Passport ID, Nationality, and Expiry Date are required.');
       return;
     }
-    
-    addClient(formData);
-    setFormData({
-      name: '',
-      email: '',
-      passportID: '',
-      nationality: '',
-      expiryDate: '',
-      contact: '',
-      source: 'Direct',
-      notes: ''
-    });
-    setError('');
-    onClose();
+    try {
+      await addClient(formData);
+      setFormData({
+        name: '',
+        email: '',
+        passportID: '',
+        nationality: '',
+        expiryDate: '',
+        contact: '',
+        source: 'Direct',
+        notes: '',
+      });
+      setError('');
+      onClose();
+    } catch {
+      /* toast from hook */
+    }
   };
 
   return (

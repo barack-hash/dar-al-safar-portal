@@ -3,6 +3,8 @@
 interface ImportMetaEnv {
   readonly VITE_EXCHANGERATE_API_KEY?: string;
   readonly VITE_TRAVEL_TRENDING_ENDPOINT?: string;
+  readonly VITE_SUPABASE_URL?: string;
+  readonly VITE_SUPABASE_ANON_KEY?: string;
 }
 
 interface ImportMeta {

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useMemo, useEf
 import type { AppAccessRole, AppSectionId, CurrentUser, User, UserRole } from '../types';
 import { useAppContext } from './AppContext';
 import { buildPermissionStrings } from '../lib/appSettings';
+import { ensureSupabaseSession, getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
 
 const CURRENT_USER_STORAGE = 'dasa_current_user_v2';
 
@@ -31,6 +32,7 @@ function defaultSuperAdmin(): CurrentUser {
     accessRole: 'SUPERADMIN',
     avatar: 'https://picsum.photos/seed/dasa-admin/100/100',
     permissions: [],
+    profilePermissions: undefined,
   };
 }
 
@@ -78,8 +80,11 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (effectiveAccessRole === 'SUPERADMIN') {
       return buildPermissionStrings('SUPERADMIN', appSettings.permissionsByRole);
     }
+    if (currentUser.profilePermissions?.length) {
+      return currentUser.profilePermissions;
+    }
     return buildPermissionStrings(effectiveAccessRole, appSettings.permissionsByRole);
-  }, [effectiveAccessRole, appSettings.permissionsByRole]);
+  }, [effectiveAccessRole, appSettings.permissionsByRole, currentUser.profilePermissions]);
 
   const currentUserWithPerms = useMemo(
     () => ({ ...currentUser, permissions }),
@@ -97,13 +102,55 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (effectiveAccessRole === 'SUPERADMIN') {
         return true;
       }
+      if (currentUser.profilePermissions?.length) {
+        return currentUser.profilePermissions.includes(`${sid}:${mode}`);
+      }
       const cell = appSettings.permissionsByRole[effectiveAccessRole]?.[sid];
       if (!cell) return false;
       if (mode === 'view') return cell.view;
       return cell.edit;
     },
-    [appSettings.permissionsByRole, effectiveAccessRole, staffEntry]
+    [appSettings.permissionsByRole, effectiveAccessRole, staffEntry, currentUser.profilePermissions]
   );
+
+  /** Load role + explicit permissions from Supabase `profiles` when the signed-in email changes. */
+  useEffect(() => {
+    if (!isSupabaseConfigured() || !currentUser.email) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await ensureSupabaseSession();
+        const sb = getSupabase();
+        const { data, error } = await sb
+          .from('profiles')
+          .select('access_role, legacy_role, permissions, full_name, avatar_url')
+          .eq('email', currentUser.email)
+          .maybeSingle();
+        if (cancelled || error || !data) return;
+        const permsRaw = data.permissions;
+        const profilePermissions =
+          Array.isArray(permsRaw) &&
+          permsRaw.length > 0 &&
+          permsRaw.every((x: unknown) => typeof x === 'string')
+            ? (permsRaw as string[])
+            : undefined;
+        setCurrentUser((u) => ({
+          ...u,
+          ...(typeof data.access_role === 'string' ? { accessRole: data.access_role as AppAccessRole } : {}),
+          ...(typeof data.full_name === 'string' && data.full_name ? { name: data.full_name } : {}),
+          ...(typeof data.avatar_url === 'string' && data.avatar_url ? { avatar: data.avatar_url } : {}),
+          ...(typeof data.legacy_role === 'string' ? { legacyRole: data.legacy_role as UserRole } : {}),
+          profilePermissions,
+          permissions: [],
+        }));
+      } catch {
+        /* offline / RLS / missing table */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser.email, setCurrentUser]);
 
   useEffect(() => {
     const o = appSettings.staffAccess[currentUser.id];
@@ -123,6 +170,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         avatar: userData.avatar,
         permissions: [],
         legacyRole: userData.role,
+        profilePermissions: undefined,
       };
       setCurrentUser(next);
     },

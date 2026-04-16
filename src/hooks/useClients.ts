@@ -1,7 +1,16 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Client, Invoice, InvoiceStatus } from '../types';
 import { useLocalStorage } from './useLocalStorage';
+import { ensureSupabaseSession, getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import {
+  clientFromRow,
+  clientToInsert,
+  invoiceFromRow,
+  invoiceToInsert,
+  type ClientRow,
+  type InvoiceRow,
+} from '../lib/supabaseMaps';
 
 const MOCK_CLIENTS: Client[] = [
   {
@@ -13,7 +22,7 @@ const MOCK_CLIENTS: Client[] = [
     expiryDate: '2026-09-15',
     contact: '+966 50 123 4567',
     source: 'Referral',
-    notes: 'Prefers luxury suites in AlUla.'
+    notes: 'Prefers luxury suites in AlUla.',
   },
   {
     id: '2',
@@ -24,7 +33,7 @@ const MOCK_CLIENTS: Client[] = [
     expiryDate: '2025-12-01',
     contact: '+1 212 555 0198',
     source: 'Website',
-    notes: 'Frequent business traveler.'
+    notes: 'Frequent business traveler.',
   },
   {
     id: '3',
@@ -35,8 +44,8 @@ const MOCK_CLIENTS: Client[] = [
     expiryDate: '2028-05-20',
     contact: '+34 91 123 4567',
     source: 'Instagram',
-    notes: 'Interested in cultural tours.'
-  }
+    notes: 'Interested in cultural tours.',
+  },
 ];
 
 const MOCK_INVOICES: Invoice[] = [
@@ -51,12 +60,12 @@ const MOCK_INVOICES: Invoice[] = [
     status: 'Paid',
     items: [
       { id: '1', description: 'Luxury Suite - AlUla (3 Nights)', amount: 3500 },
-      { id: '2', description: 'Private Desert Tour', amount: 500 }
+      { id: '2', description: 'Private Desert Tour', amount: 500 },
     ],
     subtotal: 4000,
     conciergeFee: 200,
     total: 4200,
-    currency: 'USD'
+    currency: 'USD',
   },
   {
     id: 'INV-002',
@@ -67,74 +76,213 @@ const MOCK_INVOICES: Invoice[] = [
     date: '2026-03-22',
     dueDate: '2026-04-05',
     status: 'Pending',
-    items: [
-      { id: '1', description: 'Business Class Flight - NYC to Riyadh', amount: 3666.67 }
-    ],
+    items: [{ id: '1', description: 'Business Class Flight - NYC to Riyadh', amount: 3666.67 }],
     subtotal: 3666.67,
     conciergeFee: 183.33,
     total: 3850,
-    currency: 'USD'
-  }
+    currency: 'USD',
+  },
 ];
 
 export function useClients() {
-  const [clients, setClients] = useLocalStorage<Client[]>('dasa_clients', MOCK_CLIENTS);
-  const [invoices, setInvoices] = useLocalStorage<Invoice[]>('dasa_invoices', MOCK_INVOICES);
+  const supabaseMode = isSupabaseConfigured();
 
-  const addClient = useCallback((newClient: Omit<Client, 'id'>) => {
-    const clientWithId = {
-      ...newClient,
-      id: Math.random().toString(36).substr(2, 9)
+  const [clientsLocal, setClientsLocal] = useLocalStorage<Client[]>('dasa_clients', MOCK_CLIENTS);
+  const [invoicesLocal, setInvoicesLocal] = useLocalStorage<Invoice[]>('dasa_invoices', MOCK_INVOICES);
+
+  const [clientsRemote, setClientsRemote] = useState<Client[]>([]);
+  const [invoicesRemote, setInvoicesRemote] = useState<Invoice[]>([]);
+
+  const clients = supabaseMode ? clientsRemote : clientsLocal;
+  const invoices = supabaseMode ? invoicesRemote : invoicesLocal;
+
+  useEffect(() => {
+    if (!supabaseMode) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await ensureSupabaseSession();
+        const sb = getSupabase();
+        const [{ data: cRows, error: cErr }, { data: iRows, error: iErr }] = await Promise.all([
+          sb.from('clients').select('*').returns<ClientRow[]>(),
+          sb.from('invoices').select('*').returns<InvoiceRow[]>(),
+        ]);
+        if (cancelled) return;
+        if (cErr) throw cErr;
+        if (iErr) throw iErr;
+        setClientsRemote((cRows ?? []).map(clientFromRow));
+        setInvoicesRemote((iRows ?? []).map(invoiceFromRow));
+      } catch (e) {
+        console.error(e);
+        toast.error('Could not load clients from Supabase', {
+          description: e instanceof Error ? e.message : 'Check schema, RLS, and network.',
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
     };
-    setClients(prev => [clientWithId, ...prev]);
-    toast.success('Client Added', {
-      description: `${newClient.name} has been successfully registered.`
-    });
-    return clientWithId;
-  }, [setClients]);
+  }, [supabaseMode]);
 
-  const updateClient = useCallback((id: string, updatedClient: Partial<Client>) => {
-    setClients(prev => prev.map(client => 
-      client.id === id ? { ...client, ...updatedClient } : client
-    ));
-    toast.info('Client Updated', {
-      description: 'The client information has been updated.'
-    });
-  }, [setClients]);
+  const addClient = useCallback(
+    async (newClient: Omit<Client, 'id'>): Promise<Client> => {
+      const clientWithId: Client = {
+        ...newClient,
+        id: Math.random().toString(36).substring(2, 11),
+      };
+      if (supabaseMode) {
+        try {
+          await ensureSupabaseSession();
+          const sb = getSupabase();
+          const { error } = await sb.from('clients').insert(clientToInsert(clientWithId));
+          if (error) throw error;
+          setClientsRemote((prev) => [clientWithId, ...prev]);
+        } catch (e) {
+          console.error(e);
+          toast.error('Could not add client', { description: e instanceof Error ? e.message : undefined });
+          throw e;
+        }
+      } else {
+        setClientsLocal((prev) => [clientWithId, ...prev]);
+      }
+      toast.success('Client Added', {
+        description: `${newClient.name} has been successfully registered.`,
+      });
+      return clientWithId;
+    },
+    [supabaseMode, setClientsLocal]
+  );
 
-  const deleteClient = useCallback((id: string) => {
-    setClients(prev => prev.filter(client => client.id !== id));
-    toast.error('Client Deleted', {
-      description: 'The client has been removed from the database.'
-    });
-  }, [setClients]);
+  const updateClient = useCallback(
+    async (id: string, updatedClient: Partial<Client>) => {
+      const next = clients.find((c) => c.id === id);
+      if (!next) return;
+      const merged: Client = { ...next, ...updatedClient };
+      if (supabaseMode) {
+        try {
+          await ensureSupabaseSession();
+          const sb = getSupabase();
+          const { error } = await sb.from('clients').update(clientToInsert(merged)).eq('id', id);
+          if (error) throw error;
+          setClientsRemote((prev) => prev.map((c) => (c.id === id ? merged : c)));
+        } catch (e) {
+          console.error(e);
+          toast.error('Could not update client', { description: e instanceof Error ? e.message : undefined });
+          return;
+        }
+      } else {
+        setClientsLocal((prev) => prev.map((client) => (client.id === id ? merged : client)));
+      }
+      toast.info('Client Updated', {
+        description: 'The client information has been updated.',
+      });
+    },
+    [supabaseMode, clients, setClientsLocal]
+  );
 
-  const addInvoice = useCallback((newInvoice: Omit<Invoice, 'id'>) => {
-    const invoiceWithId = {
-      ...newInvoice,
-      id: `INV-${Math.floor(1000 + Math.random() * 9000)}`
-    };
-    setInvoices(prev => [invoiceWithId, ...prev]);
-    toast.success('Invoice Created', {
-      description: `Invoice ${invoiceWithId.id} has been generated.`
-    });
-  }, [setInvoices]);
+  const deleteClient = useCallback(
+    async (id: string) => {
+      if (supabaseMode) {
+        try {
+          await ensureSupabaseSession();
+          const sb = getSupabase();
+          const { error } = await sb.from('clients').delete().eq('id', id);
+          if (error) throw error;
+          setClientsRemote((prev) => prev.filter((client) => client.id !== id));
+          setInvoicesRemote((prev) => prev.filter((inv) => inv.clientId !== id));
+        } catch (e) {
+          console.error(e);
+          toast.error('Could not delete client', { description: e instanceof Error ? e.message : undefined });
+          return;
+        }
+      } else {
+        setClientsLocal((prev) => prev.filter((client) => client.id !== id));
+      }
+      toast.error('Client Deleted', {
+        description: 'The client has been removed from the database.',
+      });
+    },
+    [supabaseMode, setClientsLocal]
+  );
 
-  const updateInvoiceStatus = useCallback((id: string, status: InvoiceStatus) => {
-    setInvoices(prev => prev.map(inv => 
-      inv.id === id ? { ...inv, status } : inv
-    ));
-    toast.info('Invoice Updated', {
-      description: `Status changed to ${status}.`
-    });
-  }, [setInvoices]);
+  const addInvoice = useCallback(
+    async (newInvoice: Omit<Invoice, 'id'>) => {
+      const invoiceWithId: Invoice = {
+        ...newInvoice,
+        id: `INV-${Math.floor(1000 + Math.random() * 9000)}`,
+      };
+      if (supabaseMode) {
+        try {
+          await ensureSupabaseSession();
+          const sb = getSupabase();
+          const { error } = await sb.from('invoices').insert(invoiceToInsert(invoiceWithId));
+          if (error) throw error;
+          setInvoicesRemote((prev) => [invoiceWithId, ...prev]);
+        } catch (e) {
+          console.error(e);
+          toast.error('Could not create invoice', { description: e instanceof Error ? e.message : undefined });
+          return;
+        }
+      } else {
+        setInvoicesLocal((prev) => [invoiceWithId, ...prev]);
+      }
+      toast.success('Invoice Created', {
+        description: `Invoice ${invoiceWithId.id} has been generated.`,
+      });
+    },
+    [supabaseMode, setInvoicesLocal]
+  );
 
-  const deleteInvoice = useCallback((id: string) => {
-    setInvoices(prev => prev.filter(inv => inv.id !== id));
-    toast.error('Invoice Deleted', {
-      description: 'The invoice has been removed.'
-    });
-  }, [setInvoices]);
+  const updateInvoiceStatus = useCallback(
+    async (id: string, status: InvoiceStatus) => {
+      const inv = invoices.find((i) => i.id === id);
+      if (!inv) return;
+      const updated: Invoice = { ...inv, status };
+      if (supabaseMode) {
+        try {
+          await ensureSupabaseSession();
+          const sb = getSupabase();
+          const { error } = await sb.from('invoices').update({ status }).eq('id', id);
+          if (error) throw error;
+          setInvoicesRemote((prev) => prev.map((i) => (i.id === id ? updated : i)));
+        } catch (e) {
+          console.error(e);
+          toast.error('Could not update invoice', { description: e instanceof Error ? e.message : undefined });
+          return;
+        }
+      } else {
+        setInvoicesLocal((prev) => prev.map((i) => (i.id === id ? updated : i)));
+      }
+      toast.info('Invoice Updated', {
+        description: `Status changed to ${status}.`,
+      });
+    },
+    [supabaseMode, invoices, setInvoicesLocal]
+  );
+
+  const deleteInvoice = useCallback(
+    async (id: string) => {
+      if (supabaseMode) {
+        try {
+          await ensureSupabaseSession();
+          const sb = getSupabase();
+          const { error } = await sb.from('invoices').delete().eq('id', id);
+          if (error) throw error;
+          setInvoicesRemote((prev) => prev.filter((inv) => inv.id !== id));
+        } catch (e) {
+          console.error(e);
+          toast.error('Could not delete invoice', { description: e instanceof Error ? e.message : undefined });
+          return;
+        }
+      } else {
+        setInvoicesLocal((prev) => prev.filter((inv) => inv.id !== id));
+      }
+      toast.error('Invoice Deleted', {
+        description: 'The invoice has been removed.',
+      });
+    },
+    [supabaseMode, setInvoicesLocal]
+  );
 
   useEffect(() => {
     const checkExpiringPassports = () => {
@@ -144,7 +292,8 @@ export function useClients() {
       const sixMonthsFromNow = new Date(currentDate);
       sixMonthsFromNow.setMonth(sixMonthsFromNow.getMonth() + 6);
 
-      clients.forEach(client => {
+      clients.forEach((client) => {
+        if (!client.expiryDate?.trim()) return;
         const expiry = new Date(client.expiryDate);
         if (expiry >= currentDate && expiry <= threeMonthsFromNow) {
           toast.warning(`Critical: Passport Expiring Soon`, {
@@ -161,7 +310,6 @@ export function useClients() {
     };
 
     checkExpiringPassports();
-    // Only run on mount to avoid spamming toasts when updating client notes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -173,6 +321,6 @@ export function useClients() {
     invoices,
     addInvoice,
     updateInvoiceStatus,
-    deleteInvoice
+    deleteInvoice,
   };
 }

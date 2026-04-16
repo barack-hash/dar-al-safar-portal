@@ -178,28 +178,32 @@ export const VisaEventsView: React.FC = () => {
     toast.success('Appointment date updated');
   };
 
-  const handleQuickAdd = () => {
+  const handleQuickAdd = async () => {
     if (!quickAddData.firstName || !quickAddData.lastName || !quickAddData.passportID) {
       toast.error('Please fill in all required fields');
       return;
     }
 
-    const newClient = addClient({
-      name: `${quickAddData.firstName} ${quickAddData.lastName}`,
-      email: '', // Optional for quick add
-      passportID: quickAddData.passportID,
-      nationality: quickAddData.nationality,
-      expiryDate: '', // Could be added later
-      contact: '',
-      source: 'Visa Walk-in',
-      notes: ''
-    });
+    try {
+      const newClient = await addClient({
+        name: `${quickAddData.firstName} ${quickAddData.lastName}`,
+        email: '', // Optional for quick add
+        passportID: quickAddData.passportID,
+        nationality: quickAddData.nationality,
+        expiryDate: '', // Could be added later
+        contact: '',
+        source: 'Visa Walk-in',
+        notes: '',
+      });
 
-    if (newClient && newClient.id) {
-      setSelectedClientId(newClient.id);
-      setIsQuickAddingClient(false);
-      setQuickAddData({ firstName: '', lastName: '', passportID: '', nationality: '' });
-      toast.success('Client added and selected.');
+      if (newClient?.id) {
+        setSelectedClientId(newClient.id);
+        setIsQuickAddingClient(false);
+        setQuickAddData({ firstName: '', lastName: '', passportID: '', nationality: '' });
+        toast.success('Client added and selected.');
+      }
+    } catch {
+      /* toast from hook */
     }
   };
 
@@ -236,7 +240,7 @@ export const VisaEventsView: React.FC = () => {
     }
   };
 
-  const handleCreateVisaApplication = () => {
+  const handleCreateVisaApplication = async () => {
     try {
       if (!selectedClientId) {
         toast.error('Please select a client');
@@ -275,7 +279,7 @@ export const VisaEventsView: React.FC = () => {
         return docs;
       };
 
-      addVisa({
+      await addVisa({
         clientId: selectedClientId,
         destinationCountry: newVisaData.destinationCountry,
         visaType: newVisaData.visaType,
@@ -286,7 +290,7 @@ export const VisaEventsView: React.FC = () => {
         pointOfEntry: newVisaData.pointOfEntry,
         yellowFeverRequired: newVisaData.yellowFeverRequired,
         intendedEntryDate: newVisaData.intendedEntryDate,
-        documents: generateChecklist()
+        documents: generateChecklist(),
       });
 
       toast.success('Visa application enrolled successfully');

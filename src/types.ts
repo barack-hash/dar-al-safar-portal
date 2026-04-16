@@ -107,6 +107,11 @@ export interface CurrentUser {
   permissions: string[];
   /** Preserved when signing in via legacy `User` for editorial features. */
   legacyRole?: UserRole;
+  /**
+   * When set (from Supabase `profiles.permissions`), `hasPermission` uses this list
+   * instead of the role matrix. Empty array in DB means fall back to matrix.
+   */
+  profilePermissions?: string[];
 }
 
 export type InvoiceStatus = 'Paid' | 'Pending' | 'Overdue';

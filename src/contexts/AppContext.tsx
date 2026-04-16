@@ -65,7 +65,7 @@ interface UIContextType {
 
 interface ClientsContextType {
   clients: Client[];
-  addClient: (client: Omit<Client, 'id'>) => Client;
+  addClient: (client: Omit<Client, 'id'>) => Promise<Client>;
   updateClient: (id: string, updatedClient: Partial<Client>) => void;
   deleteClient: (id: string) => void;
   invoices: Invoice[];
@@ -122,7 +122,7 @@ interface ClientsContextType {
   };
   visas: VisaApplication[];
   events: EventBooking[];
-  addVisa: (visa: Omit<VisaApplication, 'id'>) => VisaApplication;
+  addVisa: (visa: Omit<VisaApplication, 'id'>) => Promise<VisaApplication>;
   updateVisa: (id: string, updates: Partial<VisaApplication>) => void;
   updateVisaStatus: (id: string, status: VisaStatus) => void;
   updateVisaDocument: (visaId: string, docId: string, status: VisaDocumentStatus, verifiedAt?: string, verifiedBy?: string) => void;
@@ -130,7 +130,7 @@ interface ClientsContextType {
   updateEventStatus: (id: string, status: EventStatus) => void;
   urgentVisas: VisaApplication[];
   cashLog: CashLogEntry[];
-  addCashLogEntry: (entry: Omit<CashLogEntry, 'id'>) => CashLogEntry;
+  addCashLogEntry: (entry: Omit<CashLogEntry, 'id'>) => Promise<CashLogEntry>;
   updateCashLogEntry: (id: string, updates: Partial<CashLogEntry>) => void;
   deleteCashLogEntry: (id: string) => void;
 }
