@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import { CashLogEntry } from '../types';
 import { useLocalStorage } from './useLocalStorage';
-import { ensureSupabaseSession, getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { logSupabaseDataError } from '../lib/supabaseErrors';
 import { cashEntryFromRow, cashEntryToRow, type CashTransactionRow } from '../lib/supabaseMaps';
 
@@ -17,12 +17,7 @@ export const useCashLog = () => {
     let cancelled = false;
     void (async () => {
       try {
-        await ensureSupabaseSession();
         const sb = getSupabase();
-        const { data: { session } } = await sb.auth.getSession();
-        if (!session && import.meta.env.DEV) {
-          console.error('[useCashLog] No auth session after ensureSupabaseSession — select may return empty or fail RLS.');
-        }
         const { data, error } = await sb.from('transactions').select('*').returns<CashTransactionRow[]>();
         if (cancelled) return;
         if (error) {
@@ -51,7 +46,6 @@ export const useCashLog = () => {
       if (supabaseMode) {
         const row = cashEntryToRow(newEntry);
         try {
-          await ensureSupabaseSession();
           const sb = getSupabase();
           if (import.meta.env.DEV) {
             console.debug('[useCashLog] calling supabase.from("transactions").insert', { id: row.id });
@@ -85,7 +79,6 @@ export const useCashLog = () => {
       const merged: CashLogEntry = { ...row, ...updates };
       if (supabaseMode) {
         try {
-          await ensureSupabaseSession();
           const sb = getSupabase();
           const { error } = await sb.from('transactions').update(cashEntryToRow(merged)).eq('id', id);
           if (error) {
@@ -108,7 +101,6 @@ export const useCashLog = () => {
     async (id: string) => {
       if (supabaseMode) {
         try {
-          await ensureSupabaseSession();
           const sb = getSupabase();
           const { error } = await sb.from('transactions').delete().eq('id', id);
           if (error) {

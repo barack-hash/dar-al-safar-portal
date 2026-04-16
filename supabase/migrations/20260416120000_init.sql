@@ -2,9 +2,9 @@
 -- Apply in Supabase SQL Editor or via `supabase db push` when using the Supabase CLI.
 --
 -- After applying:
--- 1. Authentication → Providers → enable Anonymous (for internal demo) OR use real users only.
+-- 1. Create staff users under Authentication → Users; set each profile.user_id = auth.users.id.
 -- 2. Tighten RLS policies below from broad `authenticated` access to per-role / per-tenant rules.
--- 3. Seed `profiles` rows keyed by email to match Quick Login users (and optionally link `user_id` to auth.users).
+-- 3. Apply `20260417100000_profiles_super_admin_alias.sql` if you store SUPER_ADMIN in access_role.
 
 create extension if not exists pgcrypto;
 

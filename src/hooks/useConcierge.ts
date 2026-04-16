@@ -2,7 +2,7 @@ import { useMemo, useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useLocalStorage } from './useLocalStorage';
 import { VisaApplication, EventBooking, VisaStatus, EventStatus, VisaDocumentStatus } from '../types';
-import { ensureSupabaseSession, getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { visaFromRow, visaToInsert, type VisaRow } from '../lib/supabaseMaps';
 
 const DEFAULT_VISAS: VisaApplication[] = [
@@ -73,7 +73,6 @@ export function useConcierge() {
     let cancelled = false;
     void (async () => {
       try {
-        await ensureSupabaseSession();
         const sb = getSupabase();
         const { data, error } = await sb.from('visas').select('*').returns<VisaRow[]>();
         if (cancelled) return;
@@ -99,7 +98,6 @@ export function useConcierge() {
       };
       if (supabaseMode) {
         try {
-          await ensureSupabaseSession();
           const sb = getSupabase();
           const { error } = await sb.from('visas').insert(visaToInsert(newVisa));
           if (error) throw error;
@@ -121,7 +119,6 @@ export function useConcierge() {
     async (id: string, status: VisaStatus) => {
       if (supabaseMode) {
         try {
-          await ensureSupabaseSession();
           const sb = getSupabase();
           const { error } = await sb.from('visas').update({ status }).eq('id', id);
           if (error) throw error;
@@ -147,7 +144,6 @@ export function useConcierge() {
       const updated: VisaApplication = { ...visa, documents };
       if (supabaseMode) {
         try {
-          await ensureSupabaseSession();
           const sb = getSupabase();
           const { error } = await sb.from('visas').update({ documents }).eq('id', visaId);
           if (error) throw error;
@@ -182,7 +178,6 @@ export function useConcierge() {
       const merged: VisaApplication = { ...v0, ...updates };
       if (supabaseMode) {
         try {
-          await ensureSupabaseSession();
           const sb = getSupabase();
           const { error } = await sb.from('visas').update(visaToInsert(merged)).eq('id', id);
           if (error) throw error;

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Client, Invoice, InvoiceStatus } from '../types';
 import { useLocalStorage } from './useLocalStorage';
-import { ensureSupabaseSession, getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import {
   clientFromRow,
   clientToInsert,
@@ -101,7 +101,6 @@ export function useClients() {
     let cancelled = false;
     void (async () => {
       try {
-        await ensureSupabaseSession();
         const sb = getSupabase();
         const [{ data: cRows, error: cErr }, { data: iRows, error: iErr }] = await Promise.all([
           sb.from('clients').select('*').returns<ClientRow[]>(),
@@ -132,7 +131,6 @@ export function useClients() {
       };
       if (supabaseMode) {
         try {
-          await ensureSupabaseSession();
           const sb = getSupabase();
           const { error } = await sb.from('clients').insert(clientToInsert(clientWithId));
           if (error) throw error;
@@ -160,7 +158,6 @@ export function useClients() {
       const merged: Client = { ...next, ...updatedClient };
       if (supabaseMode) {
         try {
-          await ensureSupabaseSession();
           const sb = getSupabase();
           const { error } = await sb.from('clients').update(clientToInsert(merged)).eq('id', id);
           if (error) throw error;
@@ -184,7 +181,6 @@ export function useClients() {
     async (id: string) => {
       if (supabaseMode) {
         try {
-          await ensureSupabaseSession();
           const sb = getSupabase();
           const { error } = await sb.from('clients').delete().eq('id', id);
           if (error) throw error;
@@ -213,7 +209,6 @@ export function useClients() {
       };
       if (supabaseMode) {
         try {
-          await ensureSupabaseSession();
           const sb = getSupabase();
           const { error } = await sb.from('invoices').insert(invoiceToInsert(invoiceWithId));
           if (error) throw error;
@@ -240,7 +235,6 @@ export function useClients() {
       const updated: Invoice = { ...inv, status };
       if (supabaseMode) {
         try {
-          await ensureSupabaseSession();
           const sb = getSupabase();
           const { error } = await sb.from('invoices').update({ status }).eq('id', id);
           if (error) throw error;
@@ -264,7 +258,6 @@ export function useClients() {
     async (id: string) => {
       if (supabaseMode) {
         try {
-          await ensureSupabaseSession();
           const sb = getSupabase();
           const { error } = await sb.from('invoices').delete().eq('id', id);
           if (error) throw error;

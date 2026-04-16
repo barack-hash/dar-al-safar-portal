@@ -440,8 +440,9 @@ export const TopNav: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) =
                   className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-rose-700 hover:bg-rose-500/10 transition-colors"
                   onClick={() => {
                     setProfileOpen(false);
-                    logout();
-                    toast.success('Signed out', { description: 'Session cleared. Restored default administrator context.' });
+                    void logout().then(() => {
+                      toast.success('Signed out');
+                    });
                   }}
                 >
                   <LogOut size={17} />

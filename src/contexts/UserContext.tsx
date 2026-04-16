@@ -1,74 +1,127 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, ReactNode } from 'react';
-import type { AppAccessRole, AppSectionId, CurrentUser, User, UserRole } from '../types';
+import type { Session } from '@supabase/supabase-js';
+import type { AppAccessRole, AppSectionId, CurrentUser, UserRole } from '../types';
 import { useAppContext } from './AppContext';
 import { buildPermissionStrings } from '../lib/appSettings';
-import { ensureSupabaseSession, getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import { normalizeAccessRole } from '../lib/profileRole';
 
-const CURRENT_USER_STORAGE = 'dasa_current_user_v2';
-
-function mapLegacyRoleToAccess(role: UserRole): AppAccessRole {
-  if (role === 'ADMIN') return 'SUPERADMIN';
-  if (role === 'AGENT') return 'AGENT';
-  return 'AGENT';
-}
-
-function readStoredCurrentUser(): CurrentUser | null {
-  try {
-    const raw = window.localStorage.getItem(CURRENT_USER_STORAGE);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as CurrentUser;
-    if (!parsed?.id || !parsed.accessRole) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function defaultSuperAdmin(): CurrentUser {
+function userFromSession(session: Session): CurrentUser {
+  const u = session.user;
+  const meta = u.user_metadata as Record<string, unknown> | undefined;
+  const name =
+    (typeof meta?.full_name === 'string' && meta.full_name) ||
+    (typeof meta?.name === 'string' && meta.name) ||
+    u.email ||
+    'User';
+  const avatar = typeof meta?.avatar_url === 'string' ? meta.avatar_url : '';
   return {
-    id: 'default-sa',
-    name: 'DASA Administrator',
-    email: 'admin@darsafar.com',
-    accessRole: 'SUPERADMIN',
-    avatar: 'https://picsum.photos/seed/dasa-admin/100/100',
+    id: u.id,
+    name,
+    email: u.email ?? '',
+    accessRole: 'AGENT',
+    avatar,
     permissions: [],
     profilePermissions: undefined,
+    legacyRole: undefined,
   };
 }
 
 interface UserContextType {
-  /** Logged-in principal (access control). */
   currentUser: CurrentUser;
   setCurrentUser: React.Dispatch<React.SetStateAction<CurrentUser>>;
   /** @deprecated Use currentUser; kept for legacy components. */
   user: CurrentUser;
-  login: (user: User) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   isAdmin: boolean;
   isAgent: boolean;
   isViewer: boolean;
   hasPermission: (section: AppSectionId | string, mode?: 'view' | 'edit') => boolean;
-  /** Role after applying staff-directory overrides from settings. */
   effectiveAccessRole: AppAccessRole;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
-export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const UserProvider: React.FC<{ children: ReactNode; session: Session }> = ({ children, session }) => {
   const { appSettings } = useAppContext();
-  const [currentUser, setCurrentUserState] = useState<CurrentUser>(() => readStoredCurrentUser() ?? defaultSuperAdmin());
+  const [currentUser, setCurrentUserState] = useState<CurrentUser>(() => userFromSession(session));
+  const [profileSynced, setProfileSynced] = useState(false);
 
   const setCurrentUser: React.Dispatch<React.SetStateAction<CurrentUser>> = useCallback((action) => {
     setCurrentUserState((prev) => {
       const next = typeof action === 'function' ? (action as (p: CurrentUser) => CurrentUser)(prev) : action;
-      try {
-        window.localStorage.setItem(CURRENT_USER_STORAGE, JSON.stringify(next));
-      } catch {
-        /* ignore quota */
-      }
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    setCurrentUserState(userFromSession(session));
+  }, [session.user.id]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setProfileSynced(true);
+      return;
+    }
+    const uid = session.user.id;
+    const email = session.user.email ?? '';
+    let cancelled = false;
+    setProfileSynced(false);
+
+    void (async () => {
+      try {
+        const sb = getSupabase();
+        let { data, error } = await sb
+          .from('profiles')
+          .select('access_role, legacy_role, permissions, full_name, avatar_url')
+          .eq('user_id', uid)
+          .maybeSingle();
+
+        if (!data && email) {
+          const second = await sb
+            .from('profiles')
+            .select('access_role, legacy_role, permissions, full_name, avatar_url')
+            .eq('email', email)
+            .maybeSingle();
+          data = second.data;
+          error = second.error;
+        }
+
+        if (cancelled) return;
+        if (error || !data) {
+          return;
+        }
+
+        const permsRaw = data.permissions;
+        const profilePermissions =
+          Array.isArray(permsRaw) &&
+          permsRaw.length > 0 &&
+          permsRaw.every((x: unknown) => typeof x === 'string')
+            ? (permsRaw as string[])
+            : undefined;
+
+        const accessRole = normalizeAccessRole(data.access_role as string);
+
+        setCurrentUserState((u) => ({
+          ...u,
+          accessRole,
+          ...(typeof data.full_name === 'string' && data.full_name ? { name: data.full_name } : {}),
+          ...(typeof data.avatar_url === 'string' && data.avatar_url ? { avatar: data.avatar_url } : {}),
+          ...(typeof data.legacy_role === 'string' ? { legacyRole: data.legacy_role as UserRole } : {}),
+          profilePermissions,
+          permissions: [],
+        }));
+      } catch {
+        /* offline / RLS */
+      } finally {
+        if (!cancelled) setProfileSynced(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session.user.id, session.user.email]);
 
   const effectiveAccessRole = useMemo((): AppAccessRole => {
     const o = appSettings.staffAccess[currentUser.id];
@@ -113,45 +166,6 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     [appSettings.permissionsByRole, effectiveAccessRole, staffEntry, currentUser.profilePermissions]
   );
 
-  /** Load role + explicit permissions from Supabase `profiles` when the signed-in email changes. */
-  useEffect(() => {
-    if (!isSupabaseConfigured() || !currentUser.email) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        await ensureSupabaseSession();
-        const sb = getSupabase();
-        const { data, error } = await sb
-          .from('profiles')
-          .select('access_role, legacy_role, permissions, full_name, avatar_url')
-          .eq('email', currentUser.email)
-          .maybeSingle();
-        if (cancelled || error || !data) return;
-        const permsRaw = data.permissions;
-        const profilePermissions =
-          Array.isArray(permsRaw) &&
-          permsRaw.length > 0 &&
-          permsRaw.every((x: unknown) => typeof x === 'string')
-            ? (permsRaw as string[])
-            : undefined;
-        setCurrentUser((u) => ({
-          ...u,
-          ...(typeof data.access_role === 'string' ? { accessRole: data.access_role as AppAccessRole } : {}),
-          ...(typeof data.full_name === 'string' && data.full_name ? { name: data.full_name } : {}),
-          ...(typeof data.avatar_url === 'string' && data.avatar_url ? { avatar: data.avatar_url } : {}),
-          ...(typeof data.legacy_role === 'string' ? { legacyRole: data.legacy_role as UserRole } : {}),
-          profilePermissions,
-          permissions: [],
-        }));
-      } catch {
-        /* offline / RLS / missing table */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [currentUser.email, setCurrentUser]);
-
   useEffect(() => {
     const o = appSettings.staffAccess[currentUser.id];
     if (o && o.active && o.role !== currentUser.accessRole) {
@@ -159,28 +173,11 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [appSettings.staffAccess, currentUser.id, currentUser.accessRole, setCurrentUser]);
 
-  const login = useCallback(
-    (userData: User) => {
-      const accessRole = mapLegacyRoleToAccess(userData.role);
-      const next: CurrentUser = {
-        id: userData.id,
-        name: userData.name,
-        email: userData.email,
-        accessRole,
-        avatar: userData.avatar,
-        permissions: [],
-        legacyRole: userData.role,
-        profilePermissions: undefined,
-      };
-      setCurrentUser(next);
-    },
-    [setCurrentUser]
-  );
-
-  const logout = useCallback(() => {
-    const next = defaultSuperAdmin();
-    setCurrentUser(next);
-  }, [setCurrentUser]);
+  const logout = useCallback(async () => {
+    if (isSupabaseConfigured()) {
+      await getSupabase().auth.signOut();
+    }
+  }, []);
 
   const isAdmin = effectiveAccessRole === 'SUPERADMIN';
   const isAgent = effectiveAccessRole === 'AGENT';
@@ -191,7 +188,6 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       currentUser: currentUserWithPerms,
       setCurrentUser,
       user: currentUserWithPerms,
-      login,
       logout,
       isAdmin,
       isAgent,
@@ -199,10 +195,23 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       hasPermission,
       effectiveAccessRole,
     }),
-    [currentUserWithPerms, setCurrentUser, login, logout, isAdmin, isAgent, isViewer, hasPermission, effectiveAccessRole]
+    [currentUserWithPerms, setCurrentUser, logout, isAdmin, isAgent, isViewer, hasPermission, effectiveAccessRole]
   );
 
-  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
+  return (
+    <UserContext.Provider value={value}>
+      {!profileSynced ? (
+        <div className="min-h-screen flex items-center justify-center bg-[var(--app-shell-bg)] p-6">
+          <div className="glass-panel rounded-2xl px-10 py-8 text-center border-white/30 shadow-xl">
+            <p className="text-sm font-semibold text-slate-700">Loading your workspace…</p>
+            <p className="text-xs text-slate-500 mt-2">Syncing profile and permissions</p>
+          </div>
+        </div>
+      ) : (
+        children
+      )}
+    </UserContext.Provider>
+  );
 };
 
 export const useUser = () => {

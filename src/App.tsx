@@ -1,6 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useAppContext, useUI, useClientsContext } from './contexts/AppContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { UserProvider, useUser } from './contexts/UserContext';
+import { LoginView } from './components/LoginView';
+import { isSupabaseConfigured } from './lib/supabaseClient';
 import { PRIMARY_TAB_ORDER } from './lib/appSettings';
 import { Layout, Tab } from './components/Layout';
 import { ClientPortfolio } from './components/ClientPortfolio';
@@ -513,14 +517,77 @@ function AppContent() {
   );
 }
 
-export default function App() {
+function SupabaseConfigScreen({ message }: { message: string }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6 bg-[var(--app-shell-bg)]">
+      <div className="glass-panel max-w-md rounded-2xl p-8 text-center text-slate-600 text-sm shadow-xl border-white/30">
+        {message}
+      </div>
+    </div>
+  );
+}
+
+function LoginRoute() {
+  const { session, loading } = useAuth();
+  if (!isSupabaseConfigured()) {
+    return (
+      <SupabaseConfigScreen message="Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env, then restart the dev server." />
+    );
+  }
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--app-shell-bg)]">
+        <div className="glass-panel rounded-2xl px-8 py-6 text-slate-600 text-sm font-medium border-white/30">
+          Checking session…
+        </div>
+      </div>
+    );
+  }
+  if (session) {
+    return <Navigate to="/" replace />;
+  }
+  return <LoginView />;
+}
+
+function ProtectedApp() {
+  const { session, loading } = useAuth();
+  if (!isSupabaseConfigured()) {
+    return (
+      <SupabaseConfigScreen message="Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env, then restart the dev server." />
+    );
+  }
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--app-shell-bg)]">
+        <div className="glass-panel rounded-2xl px-8 py-6 text-slate-600 text-sm font-medium border-white/30">
+          Signing in…
+        </div>
+      </div>
+    );
+  }
+  if (!session) {
+    return <Navigate to="/login" replace />;
+  }
   return (
     <AppProvider>
-      <UserProvider>
-        <Toaster position="top-right" richColors closeButton />
+      <UserProvider session={session}>
         <CommandPalette />
         <AppContent />
       </UserProvider>
     </AppProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <Toaster position="top-right" richColors closeButton />
+        <Routes>
+          <Route path="/login" element={<LoginRoute />} />
+          <Route path="/*" element={<ProtectedApp />} />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
