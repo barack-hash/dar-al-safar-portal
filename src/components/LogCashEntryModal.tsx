@@ -107,8 +107,17 @@ export const LogCashEntryModal: React.FC<LogCashEntryModalProps> = ({ isOpen, on
       onClose();
       setFormData(emptyCashForm());
       setReceivedInput('');
-    } catch {
-      /* toast from hook */
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null && 'message' in err && typeof (err as { message: unknown }).message === 'string'
+            ? (err as { message: string }).message
+            : 'Save failed — check the browser console for Supabase (RLS / table / auth).';
+      toast.error('Cash entry did not save', {
+        description: message,
+        duration: 10_000,
+      });
     }
   };
 

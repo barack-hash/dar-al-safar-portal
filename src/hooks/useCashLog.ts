@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { CashLogEntry } from '../types';
 import { useLocalStorage } from './useLocalStorage';
 import { ensureSupabaseSession, getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import { logSupabaseDataError } from '../lib/supabaseErrors';
 import { cashEntryFromRow, cashEntryToRow, type CashTransactionRow } from '../lib/supabaseMaps';
 
 export const useCashLog = () => {
@@ -18,9 +19,16 @@ export const useCashLog = () => {
       try {
         await ensureSupabaseSession();
         const sb = getSupabase();
+        const { data: { session } } = await sb.auth.getSession();
+        if (!session && import.meta.env.DEV) {
+          console.error('[useCashLog] No auth session after ensureSupabaseSession — select may return empty or fail RLS.');
+        }
         const { data, error } = await sb.from('transactions').select('*').returns<CashTransactionRow[]>();
         if (cancelled) return;
-        if (error) throw error;
+        if (error) {
+          logSupabaseDataError('transactions.select (cash log load)', error);
+          throw error;
+        }
         setRemoteLog((data ?? []).map(cashEntryFromRow));
       } catch (e) {
         console.error(e);
@@ -41,15 +49,25 @@ export const useCashLog = () => {
         id: `CL-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
       };
       if (supabaseMode) {
+        const row = cashEntryToRow(newEntry);
         try {
           await ensureSupabaseSession();
           const sb = getSupabase();
-          const { error } = await sb.from('transactions').insert(cashEntryToRow(newEntry));
-          if (error) throw error;
+          if (import.meta.env.DEV) {
+            console.debug('[useCashLog] calling supabase.from("transactions").insert', { id: row.id });
+          }
+          const { data, error } = await sb.from('transactions').insert(row).select();
+          if (error) {
+            logSupabaseDataError('transactions.insert (cash log save)', error);
+            throw error;
+          }
+          if (import.meta.env.DEV) {
+            console.debug('[useCashLog] transactions.insert OK', { returnedRows: data?.length ?? 0 });
+          }
           setRemoteLog((prev) => [newEntry, ...prev]);
         } catch (e) {
-          console.error(e);
-          toast.error('Could not save cash entry', { description: e instanceof Error ? e.message : undefined });
+          logSupabaseDataError('transactions.insert (catch)', e);
+          console.error('[useCashLog] addCashLogEntry failed:', e);
           throw e;
         }
       } else {
@@ -70,7 +88,10 @@ export const useCashLog = () => {
           await ensureSupabaseSession();
           const sb = getSupabase();
           const { error } = await sb.from('transactions').update(cashEntryToRow(merged)).eq('id', id);
-          if (error) throw error;
+          if (error) {
+            logSupabaseDataError('transactions.update', error);
+            throw error;
+          }
           setRemoteLog((prev) => prev.map((entry) => (entry.id === id ? merged : entry)));
         } catch (e) {
           console.error(e);
@@ -90,7 +111,10 @@ export const useCashLog = () => {
           await ensureSupabaseSession();
           const sb = getSupabase();
           const { error } = await sb.from('transactions').delete().eq('id', id);
-          if (error) throw error;
+          if (error) {
+            logSupabaseDataError('transactions.delete', error);
+            throw error;
+          }
           setRemoteLog((prev) => prev.filter((entry) => entry.id !== id));
         } catch (e) {
           console.error(e);
