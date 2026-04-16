@@ -14,10 +14,11 @@ import {
   ArrowRight,
   Ticket,
   FileText,
-  Calendar,
-  Compass
+  ClipboardList,
+  Contact,
 } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
+import { useUser } from '../contexts/UserContext';
 import { Tab } from './Layout';
 
 type SearchResult = {
@@ -35,13 +36,14 @@ export const CommandPalette: React.FC = () => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const { 
     setCurrentTab, 
-    setIsAddClientModalOpen, 
+    openAddClientModal,
     setIsAddBookingModalOpen, 
     setIsAddVisaModalOpen,
     clients,
     bookings,
     visas
   } = useAppContext();
+  const { hasPermission } = useUser();
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
 
@@ -69,21 +71,37 @@ export const CommandPalette: React.FC = () => {
     }
   }, [isOpen]);
 
-  const navigationItems: SearchResult[] = [
-    { id: 'nav-dashboard', type: 'navigation', label: 'Dashboard', icon: LayoutGrid, action: () => setCurrentTab('dashboard') },
-    { id: 'nav-ticketing', type: 'navigation', label: 'Ticketing & PNR', icon: Plane, action: () => setCurrentTab('ticketing') },
-    { id: 'nav-clients', type: 'navigation', label: 'Client Portfolio', icon: Users, action: () => setCurrentTab('clients') },
-    { id: 'nav-accounting', type: 'navigation', label: 'Accounting & Finance', icon: Wallet, action: () => setCurrentTab('accounting') },
-    { id: 'nav-visa', type: 'navigation', label: 'Visa & Concierge', icon: Star, action: () => setCurrentTab('visa') },
-    { id: 'nav-insights', type: 'navigation', label: 'Business Insights', icon: BarChart3, action: () => setCurrentTab('insights') },
-    { id: 'nav-settings', type: 'navigation', label: 'System Settings', icon: Settings, action: () => setCurrentTab('settings') },
-  ];
+  const navigationItems: SearchResult[] = useMemo(() => {
+    const defs: { tab: Tab; id: string; label: string; icon: typeof LayoutGrid }[] = [
+      { tab: 'dashboard', id: 'nav-dashboard', label: 'Dashboard', icon: LayoutGrid },
+      { tab: 'ticketing', id: 'nav-ticketing', label: 'Ticketing & PNR', icon: Plane },
+      { tab: 'clients', id: 'nav-clients', label: 'Client Portfolio', icon: Users },
+      { tab: 'staff', id: 'nav-staff', label: 'Staff & Payroll', icon: Contact },
+      { tab: 'accounting', id: 'nav-accounting', label: 'Accounting & Finance', icon: Wallet },
+      { tab: 'cashlog', id: 'nav-cashlog', label: 'Cash Log', icon: ClipboardList },
+      { tab: 'visa', id: 'nav-visa', label: 'Visa & Concierge', icon: Star },
+      { tab: 'insights', id: 'nav-insights', label: 'Business Insights', icon: BarChart3 },
+      { tab: 'settings', id: 'nav-settings', label: 'System Settings', icon: Settings },
+    ];
+    return defs
+      .filter((d) => hasPermission(d.tab, 'view'))
+      .map((d) => ({
+        id: d.id,
+        type: 'navigation' as const,
+        label: d.label,
+        icon: d.icon,
+        action: () => setCurrentTab(d.tab),
+      }));
+  }, [hasPermission, setCurrentTab]);
 
-  const quickActions: SearchResult[] = [
-    { id: 'act-client', type: 'action', label: 'Add New Client', subLabel: 'Create a traveler profile', icon: UserPlus, action: () => setIsAddClientModalOpen(true) },
-    { id: 'act-booking', type: 'action', label: 'New PNR Booking', subLabel: 'Create flight reservation', icon: Ticket, action: () => setIsAddBookingModalOpen(true) },
-    { id: 'act-visa', type: 'action', label: 'New Visa Application', subLabel: 'Start visa process', icon: FileText, action: () => setIsAddVisaModalOpen(true) },
-  ];
+  const quickActions: SearchResult[] = useMemo(
+    () => [
+      { id: 'act-client', type: 'action' as const, label: 'Add New Client', subLabel: 'Create a traveler profile', icon: UserPlus, action: () => openAddClientModal() },
+      { id: 'act-booking', type: 'action' as const, label: 'New PNR Booking', subLabel: 'Create flight reservation', icon: Ticket, action: () => setIsAddBookingModalOpen(true) },
+      { id: 'act-visa', type: 'action' as const, label: 'New Visa Application', subLabel: 'Start visa process', icon: FileText, action: () => setIsAddVisaModalOpen(true) },
+    ],
+    [openAddClientModal, setIsAddBookingModalOpen, setIsAddVisaModalOpen]
+  );
 
   const results = useMemo(() => {
     const q = query.toLowerCase().trim();
@@ -153,7 +171,7 @@ export const CommandPalette: React.FC = () => {
     }
 
     return allResults;
-  }, [query, clients, bookings, visas]);
+  }, [query, clients, bookings, visas, navigationItems, quickActions]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {

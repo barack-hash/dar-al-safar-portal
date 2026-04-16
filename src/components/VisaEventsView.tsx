@@ -28,6 +28,7 @@ import { useClientsContext, useAppContext } from '../contexts/AppContext';
 import { VisaApplication, EventBooking, VisaStatus, EventCategory, EventStatus, VisaDocument, VisaDocumentStatus } from '../types';
 import { toast } from 'sonner';
 import { COUNTRIES } from '../constants/countries';
+import { GlassSelect } from './ui/GlassSelect';
 
 const VISA_STATUS_CONFIG: Record<VisaStatus, { label: string; progress: number; color: string; icon: LucideIcon }> = {
   'COLLECTING_DOCS': { label: 'Collecting Docs', progress: 20, color: 'bg-amber-500', icon: FileText },
@@ -59,6 +60,8 @@ export const VisaEventsView: React.FC = () => {
     nationality: ''
   });
   const [selectedClientId, setSelectedClientId] = useState<string>('');
+  const [arrangementClientId, setArrangementClientId] = useState('');
+  const [arrangementCategory, setArrangementCategory] = useState<EventCategory>('HOTEL');
   const [newVisaData, setNewVisaData] = useState({
     destinationCountry: '',
     visaType: 'Schengen - Tourist',
@@ -71,6 +74,13 @@ export const VisaEventsView: React.FC = () => {
   });
 
   const highRiskZones = ['Brazil', 'Angola', 'Benin', 'Burkina Faso', 'Burundi', 'Cameroon', 'Central African Republic', 'Chad', 'Congo', 'Cote d\'Ivoire', 'Democratic Republic of the Congo', 'Equatorial Guinea', 'Ethiopia', 'Gabon', 'Gambia', 'Ghana', 'Guinea', 'Guinea-Bissau', 'Kenya', 'Liberia', 'Mali', 'Mauritania', 'Niger', 'Nigeria', 'Senegal', 'Sierra Leone', 'South Sudan', 'Sudan', 'Togo', 'Uganda'];
+
+  useEffect(() => {
+    if (isNewEventModalOpen) {
+      setArrangementClientId('');
+      setArrangementCategory('HOTEL');
+    }
+  }, [isNewEventModalOpen]);
 
   useEffect(() => {
     if (selectedClientId) {
@@ -197,8 +207,14 @@ export const VisaEventsView: React.FC = () => {
     e.preventDefault();
     try {
       const formData = new FormData(e.currentTarget);
+      const clientId = String(formData.get('clientId') || '');
       const startDate = String(formData.get('startDate') || '');
       const endDate = String(formData.get('endDate') || '');
+
+      if (!clientId) {
+        toast.error('Please select a client.');
+        return;
+      }
 
       if (!startDate || !endDate || new Date(endDate) < new Date(startDate)) {
         toast.error('Invalid date range for arrangement.');
@@ -206,7 +222,7 @@ export const VisaEventsView: React.FC = () => {
       }
 
       addEvent({
-        clientId: String(formData.get('clientId') || ''),
+        clientId,
         title: String(formData.get('title') || ''),
         category: String(formData.get('category') || 'HOTEL') as EventCategory,
         startDate,
@@ -340,18 +356,19 @@ export const VisaEventsView: React.FC = () => {
             exit={{ opacity: 0, y: -20 }}
             className="space-y-6"
           >
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-              <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/30">
+            <div className="glass-card border-white/25 shadow-lg overflow-hidden rounded-3xl">
+              <div className="p-6 border-b border-white/20 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between bg-white/30 backdrop-blur-sm">
                 <div className="flex items-center gap-4">
-                  <div className="p-2.5 bg-active-green/10 text-active-green rounded-xl">
+                  <div className="p-2.5 bg-emerald-500/10 text-emerald-600 rounded-xl">
                     <FileText size={20} />
                   </div>
                   <h3 className="text-lg font-bold text-slate-900">Active Applications</h3>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <button 
+                    type="button"
                     onClick={() => setIsAddVisaModalOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-active-green text-white rounded-xl font-bold text-sm shadow-lg shadow-active-green/20 hover:bg-active-green/90 transition-all"
+                    className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-all duration-300 interactive-tap"
                   >
                     <Plus size={16} />
                     New Application
@@ -363,15 +380,34 @@ export const VisaEventsView: React.FC = () => {
                       placeholder="Search visas..."
                       value={visaSearch}
                       onChange={(e) => setVisaSearch(e.target.value)}
-                      className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-active-green/20 transition-all"
+                      className="pl-10 pr-4 py-2 glass-panel border-white/25 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all duration-300"
                     />
                   </div>
-                  <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all">
-                    <Filter size={20} />
+                  <button type="button" className="p-2 text-slate-500 hover:text-slate-800 glass-panel rounded-xl interactive-tap border-white/20">
+                    <Filter size={18} />
                   </button>
                 </div>
               </div>
 
+              {visas.length === 0 ? (
+                <div className="px-8 py-16 md:py-20 text-center">
+                  <div className="w-16 h-16 mx-auto rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 mb-6">
+                    <ShieldCheck size={32} />
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-900">No visa applications on file</h3>
+                  <p className="text-slate-500 mt-2 max-w-md mx-auto text-sm font-medium leading-relaxed">
+                    Start the white-glove documentation journey with your first enrollment. Every file appears here with deadlines and checklist progress.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddVisaModalOpen(true)}
+                    className="mt-8 inline-flex items-center gap-2 px-6 py-3 bg-emerald-500 text-white rounded-2xl font-bold text-sm shadow-lg shadow-emerald-500/25 interactive-tap transition-all duration-300"
+                  >
+                    <Plus size={18} />
+                    New Application
+                  </button>
+                </div>
+              ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
@@ -452,14 +488,19 @@ export const VisaEventsView: React.FC = () => {
                     })}
                     {filteredVisas.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="px-8 py-10 text-center text-sm text-slate-500">
-                          No visa applications match your search.
+                        <td colSpan={5} className="px-8 py-12 text-center">
+                          <div className="glass-panel rounded-3xl py-10 px-6 max-w-md mx-auto border-dashed border-white/40">
+                            <Search className="mx-auto text-emerald-500/40 mb-3" size={28} />
+                            <p className="text-sm font-bold text-slate-800">No matches for this search</p>
+                            <p className="text-xs text-slate-500 mt-2">Try another name, destination, or passport ID.</p>
+                          </div>
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
           </motion.div>
         ) : (
@@ -487,7 +528,24 @@ export const VisaEventsView: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {events.map((event) => {
+              {events.length === 0 ? (
+                <div className="col-span-full glass-card rounded-3xl p-14 md:p-16 text-center border-white/25">
+                  <Star className="mx-auto text-emerald-500/70 mb-5" size={40} strokeWidth={1.25} />
+                  <h3 className="text-xl font-bold text-slate-900">No luxury arrangements yet</h3>
+                  <p className="text-slate-500 mt-3 max-w-lg mx-auto text-sm font-medium leading-relaxed">
+                    When you confirm hotels, tours, or VIP access, they appear here as polished cards. Create the first arrangement to delight your clients.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setIsNewEventModalOpen(true)}
+                    className="mt-8 inline-flex items-center gap-2 px-6 py-3 bg-emerald-500 text-white rounded-2xl font-bold text-sm shadow-lg shadow-emerald-500/20 interactive-tap transition-all duration-300"
+                  >
+                    <Plus size={18} />
+                    New Arrangement
+                  </button>
+                </div>
+              ) : (
+              events.map((event) => {
                 const client = clients.find(c => c.id === event.clientId);
                 const config = EVENT_CATEGORY_CONFIG[event.category];
                 const CategoryIcon = config.icon;
@@ -535,7 +593,8 @@ export const VisaEventsView: React.FC = () => {
                     </div>
                   </motion.div>
                 );
-              })}
+              })
+              )}
             </div>
           </motion.div>
         )}
@@ -575,16 +634,15 @@ export const VisaEventsView: React.FC = () => {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Client</label>
-                    <select 
+                    <GlassSelect
                       name="clientId"
-                      required
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-active-green/20 transition-all outline-none"
-                    >
-                      <option value="">Select a client</option>
-                      {clients.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
+                      value={arrangementClientId}
+                      onChange={setArrangementClientId}
+                      placeholder="Select a client"
+                      options={[
+                        ...clients.map((c) => ({ value: c.id, label: c.name })),
+                      ]}
+                    />
                   </div>
 
                   <div>
@@ -601,16 +659,17 @@ export const VisaEventsView: React.FC = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Category</label>
-                      <select 
+                      <GlassSelect<EventCategory>
                         name="category"
-                        required
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-active-green/20 transition-all outline-none"
-                      >
-                        <option value="HOTEL">Hotel</option>
-                        <option value="TOUR">Tour</option>
-                        <option value="TRANSFER">Transfer</option>
-                        <option value="VIP_ACCESS">VIP Access</option>
-                      </select>
+                        value={arrangementCategory}
+                        onChange={setArrangementCategory}
+                        options={[
+                          { value: 'HOTEL', label: 'Hotel' },
+                          { value: 'TOUR', label: 'Tour' },
+                          { value: 'TRANSFER', label: 'Transfer' },
+                          { value: 'VIP_ACCESS', label: 'VIP Access' },
+                        ]}
+                      />
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Start Date</label>

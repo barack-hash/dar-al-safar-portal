@@ -1,5 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { AppProvider, useAppContext, useUI, useClientsContext } from './contexts/AppContext';
+import { UserProvider, useUser } from './contexts/UserContext';
+import { PRIMARY_TAB_ORDER } from './lib/appSettings';
 import { Layout, Tab } from './components/Layout';
 import { ClientPortfolio } from './components/ClientPortfolio';
 import { InsightsView } from './components/InsightsView';
@@ -8,6 +10,8 @@ import { StaffView } from './components/StaffView';
 import { TicketingView } from './components/TicketingView';
 import { VisaEventsView } from './components/VisaEventsView';
 import { CashLogView } from './components/CashLogView';
+import { SettingsView } from './components/SettingsView';
+import { AddClientModal } from './components/AddClientModal';
 import { CommandPalette } from './components/CommandPalette';
 import { Toaster } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
@@ -21,11 +25,13 @@ import {
   Wallet,
   ChevronRight,
   FileText,
-  TrendingUp
+  TrendingUp,
+  Sparkles,
+  Inbox
 } from 'lucide-react';
 
 const DashboardView = () => {
-  const { currency, convertForDisplay, setIsAddClientModalOpen, setIsLogCashEntryModalOpen, setCurrentTab, isLogCashEntryModalOpen } = useAppContext();
+  const { currency, convertForDisplay, openAddClientModal, setIsLogCashEntryModalOpen, setCurrentTab, isLogCashEntryModalOpen } = useAppContext();
   const { 
     clients, 
     expiringHolds, 
@@ -147,66 +153,79 @@ const DashboardView = () => {
       animate="visible"
       className="space-y-8 pb-20 relative"
     >
-      {/* 1. Urgent Action Ribbon */}
-      {(urgentHolds.length > 0 || priorityVisaAlerts.length > 0 || passportWarnings.length > 0) && (
-        <div className="relative overflow-hidden group">
+      {/* 1. Urgent Action Ribbon — or calm “all clear” state */}
+      <div className="relative overflow-hidden">
+        {urgentHolds.length > 0 || priorityVisaAlerts.length > 0 || passportWarnings.length > 0 ? (
           <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar snap-x">
             {urgentHolds.map(hold => (
-              <div key={hold.id} className="flex-shrink-0 snap-start bg-rose-500/10 border border-rose-500/20 backdrop-blur-md px-4 py-2 rounded-2xl flex items-center gap-3">
+              <div key={hold.id} className="flex-shrink-0 snap-start glass-panel border-rose-200/40 px-4 py-3 rounded-2xl flex items-center gap-3 interactive-tap">
                 <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-                <span className="text-xs font-bold text-rose-700">PNR {hold.pnr} Expiring Soon</span>
+                <span className="text-xs font-bold text-rose-800">PNR {hold.pnr} expiring soon</span>
               </div>
             ))}
             {priorityVisaAlerts.map(visa => (
-              <div key={visa.id} className="flex-shrink-0 snap-start bg-amber-500/10 border border-amber-500/20 backdrop-blur-md px-4 py-2 rounded-2xl flex items-center gap-3">
+              <div key={visa.id} className="flex-shrink-0 snap-start glass-panel border-amber-200/40 px-4 py-3 rounded-2xl flex items-center gap-3 interactive-tap">
                 <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                <span className="text-xs font-bold text-amber-700">Visa Deadline: {visa.destinationCountry}</span>
+                <span className="text-xs font-bold text-amber-800">Visa deadline: {visa.destinationCountry}</span>
               </div>
             ))}
             {passportWarnings.map(client => (
-              <div key={client.id} className="flex-shrink-0 snap-start bg-indigo-500/10 border border-indigo-500/20 backdrop-blur-md px-4 py-2 rounded-2xl flex items-center gap-3">
+              <div key={client.id} className="flex-shrink-0 snap-start glass-panel border-indigo-200/40 px-4 py-3 rounded-2xl flex items-center gap-3 interactive-tap">
                 <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-                <span className="text-xs font-bold text-indigo-700">Passport Expiry: {client.name}</span>
+                <span className="text-xs font-bold text-indigo-800">Passport expiry: {client.name}</span>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="glass-panel rounded-3xl px-6 py-5 flex flex-col sm:flex-row sm:items-center gap-4 border-emerald-100/40">
+            <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-600 w-fit">
+              <Sparkles size={22} />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-900">You&apos;re all caught up</p>
+              <p className="text-xs text-slate-500 mt-1 font-medium">No urgent holds, visa deadlines in the next 48 hours, or passport warnings. Excellent work keeping the desk clear.</p>
+            </div>
+          </div>
+        )}
+      </div>
 
       <header className="flex items-center justify-between">
         <div>
-          <h2 className="text-4xl font-bold text-slate-900 tracking-tight">Command Center</h2>
-          <p className="text-slate-500 mt-1 font-medium">Real-time intelligence for Dar Al Safar operations.</p>
+          <h2 className="text-3xl md:text-4xl font-bold text-slate-900 tracking-tight">Command Center</h2>
+          <p className="text-slate-500 mt-1.5 font-medium text-sm md:text-base">Real-time intelligence for Dar Al Safar operations.</p>
         </div>
       </header>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, i) => (
+        {stats.map((stat, i) => {
+          const urgentPulse = stat.label === 'Urgent Alerts' && Number(stat.value) > 0;
+          return (
           <motion.div 
             key={i}
             variants={itemVariants}
-            className="bg-white/80 backdrop-blur-xl p-6 rounded-[2.5rem] border border-slate-200/70 shadow-sm hover:shadow-md transition-all group"
+            className={`glass-card p-6 border-white/25 shadow-lg group ${urgentPulse ? 'pulse-urgent-kpi ring-2 ring-amber-400/30' : ''}`}
           >
             <div className="flex items-center justify-between mb-4">
-              <div className={`p-3 rounded-2xl border ${stat.iconClass} group-hover:scale-110 transition-transform`}>
+              <div className={`p-3 rounded-2xl border ${stat.iconClass} transition-transform duration-300 group-hover:scale-105`}>
                 <stat.icon size={20} />
               </div>
-              <ChevronRight className="text-slate-300 group-hover:text-slate-500 transition-colors" size={16} />
+              <ChevronRight className="text-slate-300 group-hover:text-emerald-500 transition-colors duration-300" size={16} />
             </div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{stat.label}</p>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">{stat.label}</p>
             <h3 className="text-3xl font-black text-slate-900 mt-1">{stat.value}</h3>
             <p className="text-xs text-slate-500 mt-2 font-medium">{stat.helper}</p>
           </motion.div>
-        ))}
+          );
+        })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* 2. Financial Snapshot & Recent Activity */}
-        <div className="lg:col-span-2 space-y-8">
+        <div className="lg:col-span-2 space-y-6">
           <motion.div 
             variants={itemVariants}
-            className="bg-white/60 backdrop-blur-xl rounded-[3rem] border border-white/40 p-10 shadow-xl shadow-slate-200/50"
+            className="glass-card p-8 md:p-10 border-white/25 shadow-xl"
           >
             <div className="flex items-center justify-between mb-10">
               <div>
@@ -252,7 +271,7 @@ const DashboardView = () => {
 
           <motion.div 
             variants={itemVariants}
-            className="bg-white/60 backdrop-blur-xl rounded-[3rem] border border-white/40 p-10 shadow-xl shadow-slate-200/50"
+            className="glass-card p-8 md:p-10 border-white/25 shadow-xl"
           >
             <div className="flex items-center justify-between mb-8">
               <h3 className="text-xl font-black text-slate-900">Recent Bookings</h3>
@@ -267,7 +286,7 @@ const DashboardView = () => {
               {priorityVisaAlerts.slice(0, 4).map((visa) => {
                 const client = clients.find(c => c.id === visa.clientId);
                 return (
-                  <div key={visa.id} className="flex items-center justify-between p-5 rounded-[2rem] hover:bg-white/80 transition-all cursor-pointer group border border-transparent hover:border-slate-100">
+                  <div key={visa.id} className="flex items-center justify-between p-5 rounded-3xl hover:bg-white/60 transition-all duration-300 cursor-pointer group border border-transparent hover:border-white/40 interactive-tap">
                     <div className="flex items-center gap-5">
                       <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-active-green/10 group-hover:text-active-green transition-all text-xl">
                         {client?.name[0] || 'V'}
@@ -295,8 +314,17 @@ const DashboardView = () => {
                 );
               })}
               {priorityVisaAlerts.length === 0 && (
-                <div className="p-6 text-center border border-dashed border-slate-200 rounded-[2rem] text-sm text-slate-500">
-                  No visa applications currently due in the next 48 hours.
+                <div className="p-10 text-center glass-panel rounded-3xl border-dashed border-white/40">
+                  <Inbox className="mx-auto text-emerald-500/50 mb-4" size={36} strokeWidth={1.25} />
+                  <p className="text-sm font-bold text-slate-800">No pending visas in this lane</p>
+                  <p className="text-xs text-slate-500 mt-2 font-medium max-w-sm mx-auto">Nothing due in the next 48 hours — great job. Open the Visa desk anytime to get ahead on new filings.</p>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentTab('visa')}
+                    className="mt-6 text-xs font-black text-emerald-600 uppercase tracking-widest hover:text-emerald-700 interactive-tap"
+                  >
+                    Go to Visa Desk
+                  </button>
                 </div>
               )}
             </div>
@@ -306,7 +334,7 @@ const DashboardView = () => {
         {/* 3. Today's Concierge List */}
         <motion.div 
           variants={itemVariants}
-          className="bg-white/60 backdrop-blur-xl rounded-[3rem] border border-white/40 p-10 shadow-xl shadow-slate-200/50 h-fit"
+          className="glass-card p-8 md:p-10 h-fit border-white/25 shadow-xl"
         >
           <div className="flex items-center justify-between mb-10">
             <h3 className="text-xl font-black text-slate-900">Priority Visa Alerts</h3>
@@ -342,20 +370,21 @@ const DashboardView = () => {
                 </div>
               );
             }) : (
-              <div className="text-center py-10">
-                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
-                  <AlertTriangle size={32} />
+              <div className="text-center py-12 px-4 glass-panel rounded-3xl border-white/30">
+                <div className="w-14 h-14 bg-emerald-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 text-emerald-600">
+                  <FileStack size={28} />
                 </div>
-                <p className="text-sm font-bold text-slate-400">No visa deadlines in the next 48 hours.</p>
+                <p className="text-sm font-bold text-slate-800">No pending visas — great job!</p>
+                <p className="text-xs text-slate-500 mt-2 font-medium leading-relaxed">Your concierge queue is quiet. Use the time for proactive outreach or prep the next luxury itinerary.</p>
               </div>
             )}
           </div>
 
-          <div className="mt-12 p-8 bg-active-green/5 rounded-[2rem] border border-active-green/10 relative overflow-hidden group">
+          <div className="mt-10 p-8 glass-panel rounded-3xl border-emerald-200/30 relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
               <TrendingUp size={64} />
             </div>
-            <p className="text-[10px] font-black text-active-green uppercase tracking-widest mb-3">Intelligence Tip</p>
+            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-3">Intelligence Tip</p>
             <p className="text-xs text-slate-600 leading-relaxed font-medium">
               {priorityVisaAlerts.length > 0
                 ? `${priorityVisaAlerts.length} visa cases require immediate document follow-up before deadline.`
@@ -366,15 +395,16 @@ const DashboardView = () => {
       </div>
 
       {/* 4. Quick Action Palette */}
-      <div className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] border border-slate-200/70 shadow-sm p-8">
+      <div className="glass-card p-8 border-white/25">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-xl font-black text-slate-900">Quick Actions</h3>
           <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Most used</span>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <button
+            type="button"
             onClick={() => setCurrentTab('visa')}
-            className="flex items-center justify-between px-5 py-4 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 transition-all"
+            className="flex items-center justify-between px-5 py-4 rounded-3xl glass-panel border-white/30 interactive-tap"
           >
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
@@ -386,11 +416,12 @@ const DashboardView = () => {
           </button>
 
           <button
+            type="button"
             onClick={() => {
               if (!isLogCashEntryModalOpen) setIsLogCashEntryModalOpen(true);
               setCurrentTab('cashlog');
             }}
-            className="flex items-center justify-between px-5 py-4 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 transition-all"
+            className="flex items-center justify-between px-5 py-4 rounded-3xl glass-panel border-white/30 interactive-tap"
           >
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
@@ -402,8 +433,9 @@ const DashboardView = () => {
           </button>
 
           <button
-            onClick={() => setIsAddClientModalOpen(true)}
-            className="flex items-center justify-between px-5 py-4 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 transition-all"
+            type="button"
+            onClick={() => openAddClientModal()}
+            className="flex items-center justify-between px-5 py-4 rounded-3xl glass-panel border-white/30 interactive-tap"
           >
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100">
@@ -433,7 +465,15 @@ const ViewPlaceholder = ({ title }: { title: string }) => (
 );
 
 function AppContent() {
-  const { currentTab, setCurrentTab } = useAppContext();
+  const { currentTab, setCurrentTab, isAddClientModalOpen, setIsAddClientModalOpen } = useAppContext();
+  const { hasPermission } = useUser();
+
+  useEffect(() => {
+    if (!hasPermission(currentTab, 'view')) {
+      const next = PRIMARY_TAB_ORDER.find((t) => hasPermission(t, 'view'));
+      if (next) setCurrentTab(next);
+    }
+  }, [currentTab, hasPermission, setCurrentTab]);
 
   const renderView = () => {
     switch (currentTab) {
@@ -445,34 +485,42 @@ function AppContent() {
       case 'visa': return <VisaEventsView />;
       case 'insights': return <InsightsView />;
       case 'cashlog': return <CashLogView />;
-      case 'settings': return <ViewPlaceholder title="System Settings" />;
+      case 'settings': return <SettingsView />;
       default: return <DashboardView />;
     }
   };
 
   return (
-    <Layout currentTab={currentTab} setTab={setCurrentTab}>
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={currentTab}
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -20 }}
-          transition={{ duration: 0.3 }}
-        >
-          {renderView()}
-        </motion.div>
-      </AnimatePresence>
-    </Layout>
+    <>
+      <Layout currentTab={currentTab} setTab={setCurrentTab}>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentTab}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3 }}
+          >
+            {renderView()}
+          </motion.div>
+        </AnimatePresence>
+      </Layout>
+      <AddClientModal
+        isOpen={isAddClientModalOpen}
+        onClose={() => setIsAddClientModalOpen(() => false)}
+      />
+    </>
   );
 }
 
 export default function App() {
   return (
     <AppProvider>
-      <Toaster position="top-right" richColors closeButton />
-      <CommandPalette />
-      <AppContent />
+      <UserProvider>
+        <Toaster position="top-right" richColors closeButton />
+        <CommandPalette />
+        <AppContent />
+      </UserProvider>
     </AppProvider>
   );
 }

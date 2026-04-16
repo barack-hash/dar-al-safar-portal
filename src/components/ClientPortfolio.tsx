@@ -17,7 +17,6 @@ import { motion } from 'motion/react';
 
 import { Client } from '../types';
 
-import { AddClientModal } from './AddClientModal';
 
 interface ClientRowProps {
   client: Client;
@@ -293,7 +292,7 @@ const ClientCard: React.FC<ClientRowProps> = React.memo(({ client, onEdit, onDel
 });
 
 export const ClientPortfolio: React.FC = () => {
-  const { debouncedSearchQuery, currency, isAddClientModalOpen, setIsAddClientModalOpen } = useUI();
+  const { debouncedSearchQuery, currency, openAddClientModal } = useUI();
   const { clients, deleteClient, updateClient } = useClientsContext();
   const [activeDropdownId, setActiveDropdownId] = React.useState<string | null>(null);
   const currentDate = new Date('2026-03-24');
@@ -356,7 +355,8 @@ export const ClientPortfolio: React.FC = () => {
             Export CSV
           </button>
           <button 
-            onClick={() => setIsAddClientModalOpen(true)}
+            type="button"
+            onClick={() => openAddClientModal()}
             className="flex items-center gap-2 px-6 py-2.5 bg-active-green text-white rounded-2xl text-sm font-semibold shadow-lg shadow-active-green/20 hover:bg-active-green/90 transition-all"
           >
             <UserPlus size={18} />
@@ -364,8 +364,6 @@ export const ClientPortfolio: React.FC = () => {
           </button>
         </div>
       </header>
-
-      <AddClientModal isOpen={isAddClientModalOpen} onClose={() => setIsAddClientModalOpen(false)} />
 
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">

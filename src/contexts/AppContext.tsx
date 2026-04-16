@@ -1,5 +1,18 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { Client, Currency, Invoice, InvoiceStatus, Transaction, Employee, BookingRecord, VisaDocumentStatus, Investor, CapitalInjection, BankAccount } from '../types';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import {
+  Client,
+  Currency,
+  Invoice,
+  InvoiceStatus,
+  Transaction,
+  Employee,
+  BookingRecord,
+  VisaDocumentStatus,
+  Investor,
+  CapitalInjection,
+  BankAccount,
+  type PersistedAppSettings,
+} from '../types';
 import { useClients } from '../hooks/useClients';
 import { useAccounting } from '../hooks/useAccounting';
 import { useStaff } from '../hooks/useStaff';
@@ -10,8 +23,8 @@ import { useLocalStorage } from '../hooks/useLocalStorage';
 import { Tab } from '../components/Layout';
 import { calculatePayroll } from '../lib/payrollEngine';
 import { toast } from 'sonner';
-import { useCallback } from 'react';
 import { VisaApplication, EventBooking, VisaStatus, EventStatus, CashLogEntry } from '../types';
+import { getDefaultPersistedAppSettings, normalizePersistedAppSettings } from '../lib/appSettings';
 import {
   FALLBACK_EXCHANGE_RATES,
   fetchLiveExchangeRates,
@@ -35,15 +48,19 @@ interface UIContextType {
   currentTab: Tab;
   setCurrentTab: (tab: Tab) => void;
   isAddClientModalOpen: boolean;
-  setIsAddClientModalOpen: (isOpen: boolean) => void;
+  setIsAddClientModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   isAddBookingModalOpen: boolean;
-  setIsAddBookingModalOpen: (isOpen: boolean) => void;
+  setIsAddBookingModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   isAddVisaModalOpen: boolean;
-  setIsAddVisaModalOpen: (isOpen: boolean) => void;
+  setIsAddVisaModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   isLogCashEntryModalOpen: boolean;
-  setIsLogCashEntryModalOpen: (isOpen: boolean) => void;
+  setIsLogCashEntryModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  /** Closes other global modals, then opens Add Client (works from any tab, including Dashboard). */
+  openAddClientModal: () => void;
   isSidebarOpen: boolean;
   toggleSidebar: (isOpen?: boolean) => void;
+  appSettings: PersistedAppSettings;
+  setAppSettings: React.Dispatch<React.SetStateAction<PersistedAppSettings>>;
 }
 
 interface ClientsContextType {
@@ -133,9 +150,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
   const [exchangeRates, setExchangeRates] = useState<ExchangeRates>(FALLBACK_EXCHANGE_RATES);
   const [exchangeRatesSource, setExchangeRatesSource] = useState<ExchangeRatesSource>('fallback');
+  const [appSettingsStored, setAppSettingsStored] = useLocalStorage<PersistedAppSettings>(
+    'dasa_app_settings',
+    getDefaultPersistedAppSettings()
+  );
+  const settingsMigrated = useRef(false);
+
+  const appSettings = useMemo(() => normalizePersistedAppSettings(appSettingsStored), [appSettingsStored]);
+
+  const setAppSettings = useCallback<React.Dispatch<React.SetStateAction<PersistedAppSettings>>>(
+    (action) => {
+      setAppSettingsStored((prev) => {
+        const base = normalizePersistedAppSettings(prev);
+        const next = typeof action === 'function' ? (action as (b: PersistedAppSettings) => PersistedAppSettings)(base) : action;
+        return normalizePersistedAppSettings(next);
+      });
+    },
+    [setAppSettingsStored]
+  );
+
+  useEffect(() => {
+    if (settingsMigrated.current) return;
+    settingsMigrated.current = true;
+    const n = normalizePersistedAppSettings(appSettingsStored);
+    if (JSON.stringify(n) !== JSON.stringify(appSettingsStored)) {
+      setAppSettingsStored(n);
+    }
+  }, [appSettingsStored, setAppSettingsStored]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', appSettings.theme);
+  }, [appSettings.theme]);
 
   const toggleSidebar = useCallback((open?: boolean) => {
     setIsSidebarOpen(prev => open !== undefined ? open : !prev);
+  }, []);
+
+  const openAddClientModal = useCallback(() => {
+    setIsAddBookingModalOpen(false);
+    setIsAddVisaModalOpen(false);
+    setIsLogCashEntryModalOpen(false);
+    setIsAddClientModalOpen(() => true);
   }, []);
 
   useEffect(() => {
@@ -395,7 +450,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     isLogCashEntryModalOpen,
     setIsLogCashEntryModalOpen,
     isSidebarOpen,
-    toggleSidebar
+    toggleSidebar,
+    appSettings,
+    setAppSettings,
+    openAddClientModal,
   }), [
     searchQuery,
     currency,
@@ -411,6 +469,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     isLogCashEntryModalOpen,
     isSidebarOpen,
     toggleSidebar,
+    appSettings,
+    setAppSettings,
+    openAddClientModal,
   ]);
 
   const clientsValue = useMemo(() => ({

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, DollarSign, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { X, DollarSign, ArrowUpRight, ArrowDownRight, UserPlus, Check } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
 import { CashLogEntry, CashLogMethod, CashLogCategory, CashLogStatus, Currency } from '../types';
 import { toast } from 'sonner';
@@ -11,28 +11,78 @@ interface LogCashEntryModalProps {
   onClose: () => void;
 }
 
+type CashEntryFormState = {
+  date: string;
+  clientEntity: string;
+  service: string;
+  description: string;
+  amount: number;
+  currency: Currency;
+  method: CashLogMethod;
+  staff: string;
+  notes: string;
+  category: CashLogCategory;
+  status: CashLogStatus;
+};
+
+const emptyCashForm = (): CashEntryFormState => ({
+  date: new Date().toISOString().split('T')[0],
+  clientEntity: '',
+  service: '',
+  description: '',
+  amount: 0,
+  currency: 'USD',
+  method: 'Cash',
+  staff: '',
+  notes: '',
+  category: 'Income',
+  status: 'Cleared',
+});
+
 export const LogCashEntryModal: React.FC<LogCashEntryModalProps> = ({ isOpen, onClose }) => {
   const { addCashLogEntry, employees } = useAppContext();
-  
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
-    clientEntity: '',
-    service: '',
-    description: '',
-    amount: 0,
-    currency: 'USD' as Currency,
-    method: 'Cash' as CashLogMethod,
-    staff: '',
-    notes: '',
-    category: 'Income' as CashLogCategory,
-    status: 'Cleared' as CashLogStatus
-  });
+  const [receivedMenuOpen, setReceivedMenuOpen] = useState(false);
+  const [receivedInput, setReceivedInput] = useState('');
+  const receivedWrapRef = useRef<HTMLDivElement>(null);
+  const wasModalOpen = useRef(false);
+
+  const [formData, setFormData] = useState<CashEntryFormState>(() => emptyCashForm());
+
+  useEffect(() => {
+    if (isOpen && !wasModalOpen.current) {
+      setFormData(emptyCashForm());
+      setReceivedInput('');
+      setReceivedMenuOpen(false);
+    }
+    wasModalOpen.current = isOpen;
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!receivedMenuOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (receivedWrapRef.current && !receivedWrapRef.current.contains(e.target as Node)) {
+        setReceivedMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [receivedMenuOpen]);
+
+  const filteredStaff = employees
+    .filter((emp) => emp.name.toLowerCase().includes(receivedInput.trim().toLowerCase()))
+    .slice(0, 8);
+
+  const trimmedReceived = receivedInput.trim();
+  const exactStaffMatch = employees.some(
+    (e) => e.name.toLowerCase() === trimmedReceived.toLowerCase()
+  );
+  const showCreateOption = trimmedReceived.length > 0 && !exactStaffMatch;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.staff) {
-      toast.error('Please select a staff member');
+    if (!formData.staff?.trim()) {
+      toast.error('Please enter who funds were received from (staff or one-time name).');
       return;
     }
 
@@ -55,20 +105,8 @@ export const LogCashEntryModal: React.FC<LogCashEntryModalProps> = ({ isOpen, on
     toast.success('Cash entry logged successfully');
     onClose();
     
-    // Reset form
-    setFormData({
-      date: new Date().toISOString().split('T')[0],
-      clientEntity: '',
-      service: '',
-      description: '',
-      amount: 0,
-      currency: 'USD',
-      method: 'Cash',
-      staff: '',
-      notes: '',
-      category: 'Income',
-      status: 'Cleared'
-    });
+    setFormData(emptyCashForm());
+    setReceivedInput('');
   };
 
   if (!isOpen) return null;
@@ -132,18 +170,63 @@ export const LogCashEntryModal: React.FC<LogCashEntryModalProps> = ({ isOpen, on
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-widest">Staff Member</label>
-                <select
-                  required
-                  value={formData.staff}
-                  onChange={(e) => setFormData({ ...formData, staff: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-active-green/20 transition-all appearance-none"
-                >
-                  <option value="">Select Staff...</option>
-                  {employees.map(emp => (
-                    <option key={emp.id} value={emp.name}>{emp.name}</option>
-                  ))}
-                </select>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-widest">Received From</label>
+                <p className="text-[11px] text-slate-500 font-medium -mt-0.5 mb-1">Staff directory or type a one-off name for this entry.</p>
+                <div ref={receivedWrapRef} className="relative">
+                  <input
+                    type="text"
+                    required
+                    autoComplete="off"
+                    placeholder="Search staff or type a name…"
+                    value={receivedInput}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setReceivedInput(v);
+                      setFormData((f) => ({ ...f, staff: v }));
+                      setReceivedMenuOpen(true);
+                    }}
+                    onFocus={() => setReceivedMenuOpen(true)}
+                    className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500/25 transition-all"
+                  />
+                  {receivedMenuOpen && (filteredStaff.length > 0 || showCreateOption) && (
+                    <ul className="absolute z-20 mt-1 w-full max-h-52 overflow-auto rounded-2xl bg-white/80 backdrop-blur-md border border-white/30 shadow-xl py-1">
+                      {filteredStaff.map((emp) => (
+                        <li key={emp.id}>
+                          <button
+                            type="button"
+                            onMouseDown={(ev) => ev.preventDefault()}
+                            onClick={() => {
+                              setFormData((f) => ({ ...f, staff: emp.name }));
+                              setReceivedInput(emp.name);
+                              setReceivedMenuOpen(false);
+                            }}
+                            className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-emerald-500/10"
+                          >
+                            {emp.name}
+                            {formData.staff === emp.name && <Check size={16} className="text-emerald-600 shrink-0" />}
+                          </button>
+                        </li>
+                      ))}
+                      {showCreateOption && (
+                        <li>
+                          <button
+                            type="button"
+                            onMouseDown={(ev) => ev.preventDefault()}
+                            onClick={() => {
+                              setFormData((f) => ({ ...f, staff: trimmedReceived }));
+                              setReceivedInput(trimmedReceived);
+                              setReceivedMenuOpen(false);
+                            }}
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold text-emerald-700 hover:bg-emerald-500/10"
+                          >
+                            <UserPlus size={16} className="shrink-0" />
+                            Create &quot;{trimmedReceived}&quot;
+                          </button>
+                        </li>
+                      )}
+                    </ul>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-2">

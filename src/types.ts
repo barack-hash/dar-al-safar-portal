@@ -41,6 +41,74 @@ export interface WorkspaceState {
 
 export type UserRole = 'ADMIN' | 'AGENT' | 'VIEWER';
 
+/** Primary navigation / permission sections (matches app tabs). */
+export type AppSectionId =
+  | 'dashboard'
+  | 'ticketing'
+  | 'clients'
+  | 'staff'
+  | 'accounting'
+  | 'cashlog'
+  | 'visa'
+  | 'insights'
+  | 'settings';
+
+export type AppAccessRole = 'SUPERADMIN' | 'MANAGER' | 'AGENT';
+
+export type AppTheme = 'classic' | 'modern' | 'dark';
+
+export interface SectionAccess {
+  view: boolean;
+  edit: boolean;
+}
+
+export type PermissionsByRole = Record<AppAccessRole, Record<AppSectionId, SectionAccess>>;
+
+export interface AgencyProfile {
+  displayName: string;
+  legalName: string;
+  tradeLicense: string;
+  address: string;
+  city: string;
+  country: string;
+  phone: string;
+  email: string;
+  iataCode: string;
+}
+
+export interface SecuritySettings {
+  sessionTimeoutMinutes: number;
+  requireMfa: boolean;
+  logAuditTrail: boolean;
+}
+
+export interface StaffAccessEntry {
+  role: AppAccessRole;
+  active: boolean;
+}
+
+export type StaffAccessMap = Record<string, StaffAccessEntry>;
+
+export interface PersistedAppSettings {
+  theme: AppTheme;
+  agencyProfile: AgencyProfile;
+  security: SecuritySettings;
+  permissionsByRole: PermissionsByRole;
+  staffAccess: StaffAccessMap;
+}
+
+export interface CurrentUser {
+  id: string;
+  name: string;
+  email: string;
+  accessRole: AppAccessRole;
+  avatar: string;
+  /** Derived from role matrix; e.g. `dashboard:view`, `accounting:edit`. */
+  permissions: string[];
+  /** Preserved when signing in via legacy `User` for editorial features. */
+  legacyRole?: UserRole;
+}
+
 export type InvoiceStatus = 'Paid' | 'Pending' | 'Overdue';
 
 export interface InvoiceItem {
