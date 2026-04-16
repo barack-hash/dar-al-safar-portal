@@ -1,0 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-mint-sidebar: #E6FFFA;
+  --color-active-gold: #D4AF37;
+  --color-active-green: #2F855A;
+}
+
+@layer base {
+  body {
+    @apply font-sans bg-gray-50 text-slate-900 antialiased;
+  }
+}
+
+.glass-sidebar {
+  background-color: var(--color-mint-sidebar);
+  border-right: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.active-indicator {
+  @apply absolute left-0 w-1 h-8 bg-active-gold rounded-r-full;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #payslip-modal, #payslip-modal *, #eticket-modal, #eticket-modal * {
+    visibility: visible;
+  }
+  #payslip-modal, #eticket-modal {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 2rem;
+    background: white !important;
+    box-shadow: none !important;
+    z-index: 9999;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
+
+@keyframes pulse-red {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.pulse-red {
+  animation: pulse-red 2s infinite;
+}
