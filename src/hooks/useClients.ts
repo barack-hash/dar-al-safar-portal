@@ -12,6 +12,20 @@ import {
   type InvoiceRow,
 } from '../lib/supabaseMaps';
 
+function withClientDefaults(client: Client): Client {
+  return {
+    ...client,
+    dateOfBirth: client.dateOfBirth ?? '',
+    phoneE164: client.phoneE164 ?? '',
+    ethiopianNationalID: client.ethiopianNationalID ?? '',
+    passportScanUrl: client.passportScanUrl ?? '',
+    nationalIdScanUrl: client.nationalIdScanUrl ?? '',
+    birthCertificateUrl: client.birthCertificateUrl ?? '',
+    familyGroupId: client.familyGroupId ?? '',
+    frequentFlyerNumbers: client.frequentFlyerNumbers ?? [],
+  };
+}
+
 const MOCK_CLIENTS: Client[] = [
   {
     id: '1',
@@ -129,24 +143,25 @@ export function useClients() {
         ...newClient,
         id: Math.random().toString(36).substring(2, 11),
       };
+      const normalized = withClientDefaults(clientWithId);
       if (supabaseMode) {
         try {
           const sb = getSupabase();
-          const { error } = await sb.from('clients').insert(clientToInsert(clientWithId));
+          const { error } = await sb.from('clients').insert(clientToInsert(normalized));
           if (error) throw error;
-          setClientsRemote((prev) => [clientWithId, ...prev]);
+          setClientsRemote((prev) => [normalized, ...prev]);
         } catch (e) {
           console.error(e);
           toast.error('Could not add client', { description: e instanceof Error ? e.message : undefined });
           throw e;
         }
       } else {
-        setClientsLocal((prev) => [clientWithId, ...prev]);
+        setClientsLocal((prev) => [normalized, ...prev]);
       }
       toast.success('Client Added', {
         description: `${newClient.name} has been successfully registered.`,
       });
-      return clientWithId;
+      return normalized;
     },
     [supabaseMode, setClientsLocal]
   );
@@ -155,7 +170,7 @@ export function useClients() {
     async (id: string, updatedClient: Partial<Client>) => {
       const next = clients.find((c) => c.id === id);
       if (!next) return;
-      const merged: Client = { ...next, ...updatedClient };
+      const merged: Client = withClientDefaults({ ...next, ...updatedClient });
       if (supabaseMode) {
         try {
           const sb = getSupabase();

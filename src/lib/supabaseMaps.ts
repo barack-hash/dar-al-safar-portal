@@ -1,4 +1,4 @@
-import type { Client, Invoice, InvoiceItem, VisaApplication } from '../types';
+import type { Client, FrequentFlyerNumber, Invoice, InvoiceItem, VisaApplication } from '../types';
 import type { CashLogEntry } from '../types';
 
 /** DB row shapes (public schema) — keep in sync with supabase/migrations. */
@@ -13,6 +13,14 @@ export interface ClientRow {
   contact: string;
   source: string;
   notes: string;
+  date_of_birth: string | null;
+  phone_e164: string | null;
+  ethiopian_national_id: string | null;
+  passport_scan_url: string | null;
+  national_id_scan_url: string | null;
+  birth_certificate_url: string | null;
+  family_group_id: string | null;
+  frequent_flyer_numbers: FrequentFlyerNumber[] | null;
 }
 
 export interface InvoiceRow {
@@ -74,6 +82,14 @@ export function clientFromRow(r: ClientRow): Client {
     contact: r.contact,
     source: r.source,
     notes: r.notes,
+    dateOfBirth: r.date_of_birth ?? '',
+    phoneE164: r.phone_e164 ?? '',
+    ethiopianNationalID: r.ethiopian_national_id ?? '',
+    passportScanUrl: r.passport_scan_url ?? '',
+    nationalIdScanUrl: r.national_id_scan_url ?? '',
+    birthCertificateUrl: r.birth_certificate_url ?? '',
+    familyGroupId: r.family_group_id ?? '',
+    frequentFlyerNumbers: Array.isArray(r.frequent_flyer_numbers) ? r.frequent_flyer_numbers : [],
   };
 }
 
@@ -88,6 +104,14 @@ export function clientToInsert(c: Client): Omit<ClientRow, never> {
     contact: c.contact,
     source: c.source,
     notes: c.notes,
+    date_of_birth: c.dateOfBirth || null,
+    phone_e164: c.phoneE164 || null,
+    ethiopian_national_id: c.ethiopianNationalID || null,
+    passport_scan_url: c.passportScanUrl || null,
+    national_id_scan_url: c.nationalIdScanUrl || null,
+    birth_certificate_url: c.birthCertificateUrl || null,
+    family_group_id: c.familyGroupId || null,
+    frequent_flyer_numbers: c.frequentFlyerNumbers ?? [],
   };
 }
 

@@ -11,23 +11,26 @@ import {
   Search,
   Filter,
   Edit2,
-  Trash2
+  Trash2,
+  Eye
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
 import { Client } from '../types';
+import { ClientProfileDrawer } from './ClientProfileDrawer';
 
 
 interface ClientRowProps {
   client: Client;
   onEdit: (client: Client) => void;
   onDelete: (id: string) => void;
+  onViewProfile: (client: Client) => void;
   currentDate: Date;
   isActive: boolean;
   onToggleDropdown: (id: string | null) => void;
 }
 
-const ClientRow: React.FC<ClientRowProps> = React.memo(({ client, onEdit, onDelete, currentDate, isActive, onToggleDropdown }) => {
+const ClientRow: React.FC<ClientRowProps> = React.memo(({ client, onEdit, onDelete, onViewProfile, currentDate, isActive, onToggleDropdown }) => {
   const getPassportStatus = (expiryDate: string) => {
     const expiry = new Date(expiryDate);
     const diffTime = expiry.getTime() - currentDate.getTime();
@@ -129,6 +132,16 @@ const ClientRow: React.FC<ClientRowProps> = React.memo(({ client, onEdit, onDele
               >
                 <button
                   onClick={() => {
+                    onViewProfile(client);
+                    onToggleDropdown(null);
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm font-semibold text-emerald-700 hover:bg-emerald-50 flex items-center gap-2"
+                >
+                  <Eye size={14} className="text-emerald-500" />
+                  View Profile
+                </button>
+                <button
+                  onClick={() => {
                     onEdit(client);
                     onToggleDropdown(null);
                   }}
@@ -158,7 +171,7 @@ const ClientRow: React.FC<ClientRowProps> = React.memo(({ client, onEdit, onDele
   );
 });
 
-const ClientCard: React.FC<ClientRowProps> = React.memo(({ client, onEdit, onDelete, currentDate, isActive, onToggleDropdown }) => {
+const ClientCard: React.FC<ClientRowProps> = React.memo(({ client, onEdit, onDelete, onViewProfile, currentDate, isActive, onToggleDropdown }) => {
   const getPassportStatus = (expiryDate: string) => {
     const expiry = new Date(expiryDate);
     const diffTime = expiry.getTime() - currentDate.getTime();
@@ -216,6 +229,16 @@ const ClientCard: React.FC<ClientRowProps> = React.memo(({ client, onEdit, onDel
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-20"
               >
+                <button
+                  onClick={() => {
+                    onViewProfile(client);
+                    onToggleDropdown(null);
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm font-semibold text-emerald-700 hover:bg-emerald-50 flex items-center gap-2"
+                >
+                  <Eye size={14} className="text-emerald-500" />
+                  View Profile
+                </button>
                 <button
                   onClick={() => {
                     onEdit(client);
@@ -277,8 +300,11 @@ const ClientCard: React.FC<ClientRowProps> = React.memo(({ client, onEdit, onDel
       </div>
 
       <div className="flex items-center gap-2 pt-2">
-        <button className="flex-1 py-2 bg-slate-50 text-slate-600 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-100 transition-all">
-          Edit
+        <button
+          onClick={() => onViewProfile(client)}
+          className="flex-1 py-2 bg-emerald-500 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-emerald-600 transition-all"
+        >
+          Profile
         </button>
         <button 
           onClick={() => onDelete(client.id)}
@@ -295,6 +321,7 @@ export const ClientPortfolio: React.FC = () => {
   const { debouncedSearchQuery, currency, openAddClientModal } = useUI();
   const { clients, deleteClient, updateClient } = useClientsContext();
   const [activeDropdownId, setActiveDropdownId] = React.useState<string | null>(null);
+  const [profileClient, setProfileClient] = React.useState<Client | null>(null);
   const currentDate = new Date('2026-03-24');
 
   const filteredClients = clients.filter(client => 
@@ -402,6 +429,7 @@ export const ClientPortfolio: React.FC = () => {
                     // Placeholder for edit functionality
                     console.log('Edit client:', c);
                   }}
+                  onViewProfile={setProfileClient}
                   onDelete={deleteClient} 
                   currentDate={currentDate} 
                   isActive={activeDropdownId === client.id}
@@ -422,6 +450,7 @@ export const ClientPortfolio: React.FC = () => {
                 // Placeholder for edit functionality
                 console.log('Edit client:', c);
               }}
+              onViewProfile={setProfileClient}
               onDelete={deleteClient} 
               currentDate={currentDate} 
               isActive={activeDropdownId === client.id}
@@ -438,6 +467,20 @@ export const ClientPortfolio: React.FC = () => {
           </div>
         </div>
       </div>
+      <ClientProfileDrawer
+        isOpen={Boolean(profileClient)}
+        client={profileClient}
+        relatedClients={
+          profileClient?.familyGroupId
+            ? clients.filter((c) => c.familyGroupId === profileClient.familyGroupId && c.id !== profileClient.id)
+            : []
+        }
+        onUpdateClient={updateClient}
+        onClientUpdated={(updated) =>
+          setProfileClient((prev) => (prev ? { ...prev, ...updated } : prev))
+        }
+        onClose={() => setProfileClient(null)}
+      />
     </div>
   );
 };

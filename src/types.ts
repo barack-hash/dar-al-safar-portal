@@ -10,6 +10,19 @@ export interface Client {
   contact: string;
   source: string;
   notes: string;
+  dateOfBirth?: string;
+  phoneE164?: string;
+  ethiopianNationalID?: string;
+  passportScanUrl?: string;
+  nationalIdScanUrl?: string;
+  birthCertificateUrl?: string;
+  familyGroupId?: string;
+  frequentFlyerNumbers?: FrequentFlyerNumber[];
+}
+
+export interface FrequentFlyerNumber {
+  airline: string;
+  number: string;
 }
 
 export type EditorialStatus = 'Draft' | 'Published' | 'Archived';
