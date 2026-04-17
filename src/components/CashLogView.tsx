@@ -1,71 +1,45 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  Download, 
-  MoreVertical, 
-  ArrowUpRight, 
-  ArrowDownRight,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  Calendar
-} from 'lucide-react';
+import { Plus, Search, Download, ArrowUpRight, ArrowDownRight, Calendar, BellRing } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
-import { CashLogEntry, CashLogStatus, Currency } from '../types';
-import { LogCashEntryModal } from './LogCashEntryModal';
+import { getRunningBalance } from '../hooks/useCashLog';
+import { QuickCashEntryDrawer } from './cash/QuickCashEntryDrawer';
 
 export const CashLogView: React.FC = () => {
-  const { 
-    cashLog, 
-    isLogCashEntryModalOpen, 
+  const {
+    cashLog,
+    clients,
+    addCashLogEntry,
+    isLogCashEntryModalOpen,
     setIsLogCashEntryModalOpen,
-    searchQuery,
     currency,
-    convertForDisplay
   } = useAppContext();
+  const [searchQuery, setSearchQuery] = useState('');
 
   const filteredLog = useMemo(() => {
-    return cashLog.filter(entry => 
-      entry.clientEntity.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      entry.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      entry.staff.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      entry.service.toLowerCase().includes(searchQuery.toLowerCase())
+    const q = searchQuery.trim().toLowerCase();
+    return cashLog.filter((entry) =>
+      !q
+      || entry.description.toLowerCase().includes(q)
+      || entry.accountSource.toLowerCase().includes(q)
+      || entry.recordedBy.toLowerCase().includes(q)
+      || entry.quickTags.some((tag) => tag.toLowerCase().includes(q))
     );
   }, [cashLog, searchQuery]);
 
+  const balances = useMemo(() => getRunningBalance(filteredLog), [filteredLog]);
   const stats = useMemo(() => {
-    const totalIn = filteredLog.reduce(
-      (sum, entry) => sum + convertForDisplay(entry.moneyIn, entry.currency),
-      0
-    );
-    const totalOut = filteredLog.reduce(
-      (sum, entry) => sum + convertForDisplay(entry.moneyOut, entry.currency),
-      0
-    );
-    const pending = filteredLog.filter(e => e.status === 'Pending').length;
-    return { totalIn, totalOut, pending };
-  }, [filteredLog, convertForDisplay]);
+    const incoming = filteredLog
+      .filter((e) => e.transactionType === 'INCOME' || e.transactionType === 'LOAN_REPAYMENT')
+      .reduce((sum, entry) => sum + entry.amount, 0);
+    const outgoing = filteredLog
+      .filter((e) => e.transactionType === 'EXPENSE')
+      .reduce((sum, entry) => sum + entry.amount, 0);
+    const reminders = filteredLog.filter((e) => Boolean(e.dueDate && e.reminderEnabled)).length;
+    return { incoming, outgoing, reminders };
+  }, [filteredLog]);
 
   const sym = currency === 'ETB' ? 'Br' : currency === 'SAR' ? 'SR' : '$';
-
-  const getStatusIcon = (status: CashLogStatus) => {
-    switch (status) {
-      case 'Cleared': return <CheckCircle2 size={14} className="text-emerald-500" />;
-      case 'Pending': return <Clock size={14} className="text-amber-500" />;
-      case 'Overdue': return <AlertCircle size={14} className="text-rose-500" />;
-    }
-  };
-
-  const getStatusStyle = (status: CashLogStatus) => {
-    switch (status) {
-      case 'Cleared': return 'bg-emerald-50 text-emerald-700 border-emerald-100';
-      case 'Pending': return 'bg-amber-50 text-amber-700 border-amber-100';
-      case 'Overdue': return 'bg-rose-50 text-rose-700 border-rose-100';
-    }
-  };
 
   return (
     <div className="space-y-8">
@@ -75,150 +49,131 @@ export const CashLogView: React.FC = () => {
           <p className="text-slate-500 mt-1 font-medium">Internal ledger for rapid transaction tracking.</p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="p-3 bg-white border border-slate-200 text-slate-600 rounded-2xl hover:bg-slate-50 transition-all shadow-sm">
+          <button type="button" className="p-3 glass-panel border border-white/40 text-slate-600 rounded-2xl hover:bg-white/40 transition-all shadow-sm">
             <Download size={20} />
           </button>
-          <button 
+          <button
+            type="button"
             onClick={() => setIsLogCashEntryModalOpen(true)}
-            className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-lg shadow-slate-900/20"
+            className="flex items-center gap-2 px-6 py-3 bg-emerald-500 text-white rounded-2xl font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20"
           >
             <Plus size={20} />
-            Log Cash Entry
+            Quick Entry
           </button>
         </div>
       </header>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="glass-panel p-6 rounded-[2rem] border border-white/30 shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center">
             <ArrowUpRight size={24} />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Money In</p>
-            <p className="text-2xl font-bold text-slate-900">{sym}{stats.totalIn.toLocaleString()}</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Inflow</p>
+            <p className="text-2xl font-bold text-slate-900">{sym}{stats.incoming.toLocaleString()}</p>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
+        <div className="glass-panel p-6 rounded-[2rem] border border-white/30 shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-rose-500/15 text-rose-600 flex items-center justify-center">
             <ArrowDownRight size={24} />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Money Out</p>
-            <p className="text-2xl font-bold text-slate-900">{sym}{stats.totalOut.toLocaleString()}</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Outflow</p>
+            <p className="text-2xl font-bold text-slate-900">{sym}{stats.outgoing.toLocaleString()}</p>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
-            <Clock size={24} />
+        <div className="glass-panel p-6 rounded-[2rem] border border-white/30 shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-slate-900/10 text-slate-700 flex items-center justify-center">
+            <span className="text-sm font-black">ETB</span>
           </div>
           <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pending Entries</p>
-            <p className="text-2xl font-bold text-slate-900">{stats.pending}</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Running Balance</p>
+            <p className="text-2xl font-bold text-slate-900">Br {balances.total.ETB.toLocaleString()}</p>
+          </div>
+        </div>
+        <div className="glass-panel p-6 rounded-[2rem] border border-white/30 shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-blue-500/15 text-blue-600 flex items-center justify-center">
+            <BellRing size={22} />
+          </div>
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Repayment Reminders</p>
+            <p className="text-2xl font-bold text-slate-900">{stats.reminders}</p>
           </div>
         </div>
       </div>
 
-      {/* Data Table */}
-      <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 overflow-hidden">
-        <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50/50 border-b border-slate-100">
-                <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Date & ID</th>
-                <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Client / Entity</th>
-                <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Service & Description</th>
-                <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Money In</th>
-                <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Money Out</th>
-                <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Method</th>
-                <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Staff</th>
-                <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
-                <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {filteredLog.length > 0 ? filteredLog.map((entry) => (
-                <tr key={entry.id} className="hover:bg-slate-50/50 transition-colors group">
-                  <td className="px-6 py-5">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-900">{entry.date}</span>
-                      <span className="text-[10px] font-medium text-slate-400 font-mono">{entry.id}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-5">
-                    <span className="text-sm font-bold text-slate-700">{entry.clientEntity}</span>
-                  </td>
-                  <td className="px-6 py-5">
-                    <div className="flex flex-col max-w-xs">
-                      <span className="text-sm font-bold text-slate-900 truncate">{entry.service}</span>
-                      <span className="text-xs text-slate-500 truncate">{entry.description}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-5 text-right">
-                    {entry.moneyIn > 0 ? (
-                      <span className="text-sm font-bold text-emerald-600">
-                        +{convertForDisplay(entry.moneyIn, entry.currency).toLocaleString()} <span className="text-[10px] opacity-60">{sym}</span>
-                      </span>
-                    ) : (
-                      <span className="text-slate-300">-</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-5 text-right">
-                    {entry.moneyOut > 0 ? (
-                      <span className="text-sm font-bold text-rose-600">
-                        -{convertForDisplay(entry.moneyOut, entry.currency).toLocaleString()} <span className="text-[10px] opacity-60">{sym}</span>
-                      </span>
-                    ) : (
-                      <span className="text-slate-300">-</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-5">
-                    <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-lg">
-                      {entry.method}
-                    </span>
-                  </td>
-                  <td className="px-6 py-5">
-                    <span className="text-sm font-medium text-slate-600">{entry.staff}</span>
-                  </td>
-                  <td className="px-6 py-5">
-                    <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-widest ${getStatusStyle(entry.status)}`}>
-                      {getStatusIcon(entry.status)}
-                      {entry.status}
-                    </div>
-                  </td>
-                  <td className="px-6 py-5 text-right">
-                    <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all">
-                      <MoreVertical size={18} />
-                    </button>
-                  </td>
-                </tr>
-              )) : (
-                <tr>
-                  <td colSpan={9} className="px-6 py-20 text-center">
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300">
-                        <Calendar size={32} />
-                      </div>
-                      <p className="text-slate-500 font-medium">No cash entries found.</p>
-                      <button 
-                        onClick={() => setIsLogCashEntryModalOpen(true)}
-                        className="text-sm font-bold text-active-green hover:underline"
+      <div className="glass-panel rounded-[2.5rem] border border-white/25 shadow-xl overflow-hidden">
+        <div className="p-6 md:p-8 border-b border-white/20 flex items-center justify-between">
+          <h3 className="text-xl font-bold text-slate-900">Informal Ledger</h3>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search source, tags, description..."
+              className="pl-10 pr-3 py-2 rounded-xl glass-panel border border-white/40 text-sm text-slate-700"
+            />
+          </div>
+        </div>
+        <div className="p-6 md:p-8">
+          {filteredLog.length === 0 ? (
+            <div className="py-16 text-center text-slate-500">
+              <Calendar size={32} className="mx-auto mb-3 text-slate-300" />
+              <p>No cash entries found.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+              {filteredLog.map((entry) => {
+                const positive = entry.transactionType !== 'EXPENSE';
+                return (
+                  <motion.div
+                    key={entry.id}
+                    className={`glass-panel rounded-2xl border p-5 space-y-3 ${
+                      positive ? 'border-emerald-500/25' : 'border-rose-500/25'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-slate-500">{new Date(entry.createdAt).toLocaleDateString()}</p>
+                      <span
+                        className={`px-2 py-1 rounded-full text-[10px] font-black tracking-widest ${
+                          positive ? 'bg-emerald-500/15 text-emerald-700' : 'bg-rose-500/15 text-rose-700'
+                        }`}
                       >
-                        Log your first entry
-                      </button>
+                        {entry.transactionType.replace('_', ' ')}
+                      </span>
                     </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                    <p className={`text-2xl font-black ${positive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {positive ? '+' : '-'} {entry.currency === 'ETB' ? 'Br' : '$'} {entry.amount.toLocaleString()}
+                    </p>
+                    <p className="text-sm font-semibold text-slate-800">{entry.accountSource}</p>
+                    <p className="text-sm text-slate-600">{entry.description || 'No description'}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {entry.quickTags.map((tag) => (
+                        <span key={tag} className="px-2 py-1 rounded-full bg-white/70 text-[11px] text-slate-600 border border-white/40">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                    {entry.dueDate && (
+                      <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-700 text-[11px] font-semibold">
+                        <BellRing size={12} />
+                        Repayment Reminder: {entry.dueDate}
+                      </div>
+                    )}
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Modal rendered at bottom */}
-      <LogCashEntryModal 
-        isOpen={isLogCashEntryModalOpen} 
-        onClose={() => setIsLogCashEntryModalOpen(false)} 
+      <QuickCashEntryDrawer
+        isOpen={isLogCashEntryModalOpen}
+        onClose={() => setIsLogCashEntryModalOpen(false)}
+        clients={clients}
+        addCashLogEntry={addCashLogEntry}
       />
     </div>
   );

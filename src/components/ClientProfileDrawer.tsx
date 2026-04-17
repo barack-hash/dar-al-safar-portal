@@ -2,13 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { AlertTriangle, Calendar, CreditCard, Eye, FileText, Phone, Shield, User, X, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Client, FrequentFlyerNumber } from '../types';
+import type { CashLogEntry, Client, FrequentFlyerNumber } from '../types';
 import { getSignedClientDocumentUrl, uploadClientDocument, validateE164 } from '../lib/clientDocuments';
 
 type Props = {
   isOpen: boolean;
   client: Client | null;
   relatedClients: Client[];
+  informalHistory: CashLogEntry[];
   onUpdateClient: (id: string, updatedClient: Partial<Client>) => void;
   onClientUpdated: (updatedClient: Partial<Client>) => void;
   onClose: () => void;
@@ -18,6 +19,7 @@ export const ClientProfileDrawer: React.FC<Props> = ({
   isOpen,
   client,
   relatedClients,
+  informalHistory,
   onUpdateClient,
   onClientUpdated,
   onClose,
@@ -360,6 +362,42 @@ export const ClientProfileDrawer: React.FC<Props> = ({
                       <p className="text-xs text-slate-500">No frequent flyer numbers saved.</p>
                     )}
                   </div>
+                </section>
+
+                <section className="glass-panel rounded-2xl p-4 space-y-3">
+                  <h3 className="text-xs font-black tracking-widest text-emerald-600 uppercase">Informal History</h3>
+                  {informalHistory.length === 0 ? (
+                    <p className="text-xs text-slate-500">No linked cash-log entries.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {informalHistory.slice(0, 12).map((entry) => {
+                        const positive = entry.transactionType !== 'EXPENSE';
+                        return (
+                          <div
+                            key={entry.id}
+                            className="rounded-xl bg-white/60 border border-white/40 px-3 py-2 flex items-center justify-between gap-3"
+                          >
+                            <div>
+                              <p className="text-xs font-semibold text-slate-700">
+                                {entry.description || entry.accountSource}
+                              </p>
+                              <p className="text-[11px] text-slate-500">
+                                {new Date(entry.createdAt).toLocaleDateString()} · {entry.accountSource}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className={`text-xs font-black ${positive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                {positive ? '+' : '-'} {entry.currency === 'ETB' ? 'Br' : '$'} {entry.amount.toLocaleString()}
+                              </p>
+                              {entry.dueDate && (
+                                <p className="text-[10px] text-amber-700">Due: {entry.dueDate}</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </section>
               </div>
               {isEditing && (

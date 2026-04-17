@@ -89,11 +89,12 @@ export const InsightsView: React.FC = () => {
 
     // Aggregate from Cash Log
     cashLog.forEach(entry => {
-      if (!performanceMap[entry.staff]) {
-        performanceMap[entry.staff] = { revenue: 0, volume: 0 };
+      if (!performanceMap[entry.recordedBy]) {
+        performanceMap[entry.recordedBy] = { revenue: 0, volume: 0 };
       }
-      performanceMap[entry.staff].revenue += convertForDisplay(entry.moneyIn, entry.currency);
-      performanceMap[entry.staff].volume += 1;
+      const income = entry.transactionType === 'EXPENSE' ? 0 : entry.amount;
+      performanceMap[entry.recordedBy].revenue += convertForDisplay(income, entry.currency);
+      performanceMap[entry.recordedBy].volume += 1;
     });
 
     return Object.entries(performanceMap)
@@ -129,7 +130,7 @@ export const InsightsView: React.FC = () => {
       .filter((tx) => tx.type === 'INCOME')
       .reduce((s, tx) => s + convertForDisplay(tx.amount, tx.currency), 0);
     const fromCash = cashLog.reduce(
-      (s, e) => s + convertForDisplay(e.moneyIn, e.currency),
+      (s, e) => s + convertForDisplay(e.transactionType === 'EXPENSE' ? 0 : e.amount, e.currency),
       0
     );
     return fromTx + fromCash;
@@ -156,15 +157,16 @@ export const InsightsView: React.FC = () => {
 
     // Aggregate from Cash Log (for entities not in Client list)
     cashLog.forEach(entry => {
-      if (entry.moneyIn > 0) {
-        const name = entry.clientEntity;
+      if (entry.transactionType !== 'EXPENSE') {
+        const linkedClient = clients.find((c) => c.id === entry.linkedClientId);
+        const name = linkedClient?.name ?? entry.accountSource;
         const existingClient = clients.find(c => c.name === name);
         const id = existingClient ? existingClient.id : `entity-${name}`;
 
         if (!clientMap[id]) {
           clientMap[id] = { name, ltv: 0, count: 0 };
         }
-        clientMap[id].ltv += convertForDisplay(entry.moneyIn, entry.currency);
+        clientMap[id].ltv += convertForDisplay(entry.amount, entry.currency);
         clientMap[id].count += 1;
       }
     });
@@ -186,12 +188,15 @@ export const InsightsView: React.FC = () => {
 
     // Aggregate from Cash Log
     cashLog.forEach(entry => {
-      const date = entry.date;
+      const date = entry.createdAt.split('T')[0];
       if (!trendMap[date]) {
         trendMap[date] = { cashIn: 0, cashOut: 0 };
       }
-      trendMap[date].cashIn += convertForDisplay(entry.moneyIn, entry.currency);
-      trendMap[date].cashOut += convertForDisplay(entry.moneyOut, entry.currency);
+      if (entry.transactionType === 'EXPENSE') {
+        trendMap[date].cashOut += convertForDisplay(entry.amount, entry.currency);
+      } else {
+        trendMap[date].cashIn += convertForDisplay(entry.amount, entry.currency);
+      }
     });
 
     // Aggregate from Transactions

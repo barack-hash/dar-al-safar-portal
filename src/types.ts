@@ -341,24 +341,24 @@ export interface CapitalInjection {
   bankAccountId?: string;
 }
 
-export type CashLogStatus = 'Cleared' | 'Pending' | 'Overdue';
-export type CashLogMethod = 'Bank' | 'Cash';
-export type CashLogCategory = 'Income' | 'Expense';
+export type CashLogCurrency = Extract<Currency, 'ETB' | 'USD'>;
+export type CashLogTransactionType = 'INCOME' | 'EXPENSE' | 'LOAN_REPAYMENT';
 
 export interface CashLogEntry {
   id: string;
-  date: string;
-  clientEntity: string;
-  service: string;
+  amount: number;
+  currency: CashLogCurrency;
+  transactionType: CashLogTransactionType;
+  accountSource: string;
+  linkedClientId?: string;
+  recordedBy: string;
   description: string;
-  moneyIn: number;
-  moneyOut: number;
-  currency: Currency;
-  method: CashLogMethod;
-  staff: string;
-  notes: string;
-  status: CashLogStatus;
-  category: CashLogCategory;
+  quickTags: string[];
+  isFormalAccountingReady: boolean;
+  dueDate?: string;
+  reminderEnabled: boolean;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface User {

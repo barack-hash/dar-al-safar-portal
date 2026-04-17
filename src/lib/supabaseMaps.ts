@@ -69,20 +69,21 @@ export interface VisaRow {
   expected_approval_date?: string | null;
 }
 
-export interface CashTransactionRow {
+export interface CashLogRow {
   id: string;
-  date: string;
-  client_entity: string;
-  service: string;
+  amount: number;
+  currency: 'ETB' | 'USD';
+  transaction_type: 'INCOME' | 'EXPENSE' | 'LOAN_REPAYMENT';
+  account_source: string;
+  linked_client_id: string | null;
+  recorded_by: string;
   description: string;
-  money_in: number;
-  money_out: number;
-  currency: string;
-  method: string;
-  staff: string;
-  notes: string;
-  status: string;
-  category: string;
+  quick_tags: string[] | null;
+  is_formal_accounting_ready: boolean;
+  due_date: string | null;
+  reminder_enabled: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export function clientFromRow(r: ClientRow): Client {
@@ -336,38 +337,40 @@ export function bookingToInsert(
   };
 }
 
-export function cashEntryFromRow(r: CashTransactionRow): CashLogEntry {
+export function cashLogFromRow(r: CashLogRow): CashLogEntry {
   return {
     id: r.id,
-    date: r.date,
-    clientEntity: r.client_entity,
-    service: r.service,
+    amount: Number(r.amount),
+    currency: r.currency,
+    transactionType: r.transaction_type,
+    accountSource: r.account_source,
+    linkedClientId: r.linked_client_id ?? undefined,
+    recordedBy: r.recorded_by,
     description: r.description,
-    moneyIn: Number(r.money_in),
-    moneyOut: Number(r.money_out),
-    currency: r.currency as CashLogEntry['currency'],
-    method: r.method as CashLogEntry['method'],
-    staff: r.staff,
-    notes: r.notes,
-    status: r.status as CashLogEntry['status'],
-    category: r.category as CashLogEntry['category'],
+    quickTags: Array.isArray(r.quick_tags) ? r.quick_tags : [],
+    isFormalAccountingReady: r.is_formal_accounting_ready,
+    dueDate: r.due_date ?? undefined,
+    reminderEnabled: r.reminder_enabled,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
   };
 }
 
-export function cashEntryToRow(e: CashLogEntry): CashTransactionRow {
+export function cashLogToInsert(e: CashLogEntry): CashLogRow {
   return {
     id: e.id,
-    date: e.date,
-    client_entity: e.clientEntity,
-    service: e.service,
-    description: e.description,
-    money_in: e.moneyIn,
-    money_out: e.moneyOut,
+    amount: e.amount,
     currency: e.currency,
-    method: e.method,
-    staff: e.staff,
-    notes: e.notes,
-    status: e.status,
-    category: e.category,
+    transaction_type: e.transactionType,
+    account_source: e.accountSource,
+    linked_client_id: e.linkedClientId ?? null,
+    recorded_by: e.recordedBy,
+    description: e.description,
+    quick_tags: e.quickTags,
+    is_formal_accounting_ready: e.isFormalAccountingReady,
+    due_date: e.dueDate ?? null,
+    reminder_enabled: e.reminderEnabled,
+    created_at: e.createdAt,
+    updated_at: e.updatedAt ?? e.createdAt,
   };
 }

@@ -319,7 +319,7 @@ const ClientCard: React.FC<ClientRowProps> = React.memo(({ client, onEdit, onDel
 
 export const ClientPortfolio: React.FC = () => {
   const { debouncedSearchQuery, currency, openAddClientModal } = useUI();
-  const { clients, deleteClient, updateClient } = useClientsContext();
+  const { clients, deleteClient, updateClient, cashLog } = useClientsContext();
   const [activeDropdownId, setActiveDropdownId] = React.useState<string | null>(null);
   const [profileClient, setProfileClient] = React.useState<Client | null>(null);
   const currentDate = new Date('2026-03-24');
@@ -476,6 +476,11 @@ export const ClientPortfolio: React.FC = () => {
             : []
         }
         onUpdateClient={updateClient}
+        informalHistory={
+          profileClient
+            ? cashLog.filter((entry) => entry.linkedClientId === profileClient.id)
+            : []
+        }
         onClientUpdated={(updated) =>
           setProfileClient((prev) => (prev ? { ...prev, ...updated } : prev))
         }
