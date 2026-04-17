@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
 import { useUser } from '../contexts/UserContext';
+import { useAuth } from '../contexts/AuthContext';
 import type { AppAccessRole, AppSectionId, AppTheme, SectionAccess } from '../types';
 import { ACCESS_ROLE_LABEL, APP_ACCESS_ROLES, APP_SECTION_META } from '../lib/appSettings';
 import { GlassSelect } from './ui/GlassSelect';
@@ -55,7 +56,8 @@ function Toggle({
 
 export const SettingsView: React.FC = () => {
   const { employees, appSettings, setAppSettings } = useAppContext();
-  const { hasPermission, currentUser, effectiveAccessRole, roleLabel } = useUser();
+  const { hasPermission, currentUser, roleLabel } = useUser();
+  const { session } = useAuth();
   const [tab, setTab] = useState<SettingsTab>('users');
 
   const canEditSettings = hasPermission('settings', 'edit');
@@ -102,8 +104,29 @@ export const SettingsView: React.FC = () => {
     { id: 'appearance', label: 'Appearance', icon: Palette },
   ];
 
+  const profileEmail = session?.user?.email ?? currentUser.email ?? '—';
+
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-16">
+      <section className="glass-panel rounded-[2rem] border border-white/25 p-6 md:p-8 shadow-sm">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-4">My profile</p>
+        <p className="text-xs text-slate-500 mb-4 font-medium">Read-only — synced from your account and Supabase profile.</p>
+        <dl className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          <div>
+            <dt className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Name</dt>
+            <dd className="text-sm font-bold text-slate-900">{currentUser.name}</dd>
+          </div>
+          <div>
+            <dt className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Email</dt>
+            <dd className="text-sm font-bold text-slate-900 break-all">{profileEmail}</dd>
+          </div>
+          <div>
+            <dt className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Role</dt>
+            <dd className="text-sm font-bold text-slate-900">{roleLabel}</dd>
+          </div>
+        </dl>
+      </section>
+
       <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 border-b border-slate-200/80 pb-8">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.25em] text-active-green mb-2">Administration</p>

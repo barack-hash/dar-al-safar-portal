@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AppProvider, useAppContext, useUI, useClientsContext } from './contexts/AppContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { UserProvider, useUser } from './contexts/UserContext';
@@ -475,8 +475,16 @@ const ViewPlaceholder = ({ title }: { title: string }) => (
 );
 
 function AppContent() {
+  const location = useLocation();
   const { currentTab, setCurrentTab, isAddClientModalOpen, setIsAddClientModalOpen } = useAppContext();
   const { hasPermission } = useUser();
+
+  useEffect(() => {
+    const path = (location.pathname.replace(/\/$/, '') || '/').toLowerCase();
+    if (path === '/settings') {
+      setCurrentTab('settings');
+    }
+  }, [location.pathname, setCurrentTab]);
 
   useEffect(() => {
     if (!hasPermission(currentTab, 'view')) {

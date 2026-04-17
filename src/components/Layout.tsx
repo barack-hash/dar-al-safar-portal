@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useUI, useClientsContext } from '../contexts/AppContext';
 import { useUser } from '../contexts/UserContext';
@@ -136,6 +137,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, isOpen, on
 };
 
 export const TopNav: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) => {
+  const navigate = useNavigate();
   const { searchQuery, setSearchQuery, currency, setCurrency, setCurrentTab } = useUI();
   const { visas, clients, expiringHolds } = useClientsContext();
   const { currentUser, roleLabel, logout } = useUser();
@@ -418,7 +420,8 @@ export const TopNav: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) =
                   className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-slate-800 hover:bg-emerald-500/10 transition-colors"
                   onClick={() => {
                     setProfileOpen(false);
-                    toast.message('Profile', { description: 'Personal profile preferences will open here in a future release.' });
+                    setCurrentTab('settings');
+                    navigate('/settings');
                   }}
                 >
                   <User size={17} className="text-slate-500" />
@@ -431,6 +434,7 @@ export const TopNav: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) =
                   onClick={() => {
                     setProfileOpen(false);
                     setCurrentTab('settings');
+                    navigate('/settings');
                   }}
                 >
                   <Settings size={17} className="text-slate-500" />
@@ -443,9 +447,16 @@ export const TopNav: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) =
                   className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-rose-700 hover:bg-rose-500/10 transition-colors"
                   onClick={() => {
                     setProfileOpen(false);
-                    void logout().then(() => {
-                      toast.success('Signed out');
-                    });
+                    void (async () => {
+                      try {
+                        await logout();
+                        toast.success('Signed out');
+                      } catch (e) {
+                        toast.error('Sign out failed', {
+                          description: e instanceof Error ? e.message : 'Please try again.',
+                        });
+                      }
+                    })();
                   }}
                 >
                   <LogOut size={17} />
