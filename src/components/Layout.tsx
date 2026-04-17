@@ -24,6 +24,7 @@ import {
   CircleDollarSign,
   FileText,
   AlertTriangle,
+  BellRing,
 } from 'lucide-react';
 
 const SEEN_ACTIVITY_KEY = 'dasa_activity_seen';
@@ -31,6 +32,41 @@ const SEEN_ACTIVITY_KEY = 'dasa_activity_seen';
 function currencyButtonLabel(c: Currency): string {
   const sym = c === 'ETB' ? 'Br' : c === 'SAR' ? 'SR' : '$';
   return `${sym} ${c}`;
+}
+
+function initialsFromDisplayName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase();
+  }
+  return (parts[0]?.charAt(0) || '?').toUpperCase();
+}
+
+function NavUserAvatar({
+  avatarUrl,
+  name,
+  className = 'w-9 h-9',
+}: {
+  avatarUrl?: string;
+  name: string;
+  className?: string;
+}) {
+  const initial = initialsFromDisplayName(name);
+  if (avatarUrl) {
+    return (
+      <div className={`${className} rounded-full overflow-hidden shrink-0 ring-2 ring-white/60`}>
+        <img src={avatarUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+      </div>
+    );
+  }
+  return (
+    <div
+      className={`${className} rounded-full shrink-0 ring-2 ring-white/60 flex items-center justify-center text-white text-xs font-bold tracking-tight bg-gradient-to-br from-emerald-600 to-emerald-900`}
+      aria-hidden
+    >
+      {initial}
+    </div>
+  );
 }
 
 type ActivityRow = {
@@ -119,13 +155,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, isOpen, on
 
       <div className="p-4 border-t border-white/20">
         <div className="glass-panel rounded-2xl p-3.5 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center text-white text-sm font-bold overflow-hidden shrink-0 ring-2 ring-white/60">
-            {currentUser.avatar ? (
-              <img src={currentUser.avatar} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-            ) : (
-              currentUser.name.charAt(0)
-            )}
-          </div>
+          <NavUserAvatar avatarUrl={currentUser.avatar} name={currentUser.name} />
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold text-slate-900 truncate">{currentUser.name}</p>
             <p className="text-[10px] text-slate-500 truncate">{roleLabel}</p>
@@ -139,7 +169,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, isOpen, on
 export const TopNav: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) => {
   const navigate = useNavigate();
   const { searchQuery, setSearchQuery, currency, setCurrency, setCurrentTab } = useUI();
-  const { visas, clients, expiringHolds } = useClientsContext();
+  const { visas, clients, expiringHolds, cashLog } = useClientsContext();
   const { currentUser, roleLabel, logout } = useUser();
   const [profileOpen, setProfileOpen] = useState(false);
   const [currencyOpen, setCurrencyOpen] = useState(false);
@@ -214,6 +244,15 @@ export const TopNav: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) =
     const highIds = recentActivity.filter((a) => a.priority === 'high').map((a) => a.id);
     return highIds.some((id) => !seenActivityIds.includes(id));
   }, [recentActivity, seenActivityIds]);
+
+  const cashLogReminders = useMemo(
+    () =>
+      cashLog
+        .filter((e) => Boolean(e.reminderEnabled && e.dueDate))
+        .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''))
+        .slice(0, 10),
+    [cashLog]
+  );
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -345,7 +384,7 @@ export const TopNav: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) =
                 </div>
                 <div className="overflow-y-auto py-2 flex-1">
                   {recentActivity.length === 0 ? (
-                    <p className="px-4 py-8 text-center text-sm text-slate-500 font-medium">No recent activity to show.</p>
+                    <p className="px-4 py-6 text-center text-sm text-slate-500 font-medium">No recent activity to show.</p>
                   ) : (
                     recentActivity.map((item) => (
                       <button
@@ -355,7 +394,7 @@ export const TopNav: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) =
                           if (item.tab) setCurrentTab(item.tab);
                           setNotifOpen(false);
                         }}
-                        className="flex w-full gap-3 px-4 py-3 text-left hover:bg-emerald-500/10 transition-colors border-b border-white/10 last:border-0"
+                        className="flex w-full gap-3 px-4 py-3 text-left hover:bg-emerald-500/10 transition-colors border-b border-white/10"
                       >
                         <div
                           className={`mt-0.5 shrink-0 p-2 rounded-xl ${
@@ -373,6 +412,41 @@ export const TopNav: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) =
                       </button>
                     ))
                   )}
+
+                  <div className="border-t border-white/20 mt-1 pt-2">
+                    <p className="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                      Cash log reminders
+                    </p>
+                    {cashLogReminders.length === 0 ? (
+                      <p className="px-4 pb-4 text-center text-xs text-slate-500 font-medium">No repayment reminders.</p>
+                    ) : (
+                      cashLogReminders.map((entry) => (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          onClick={() => {
+                            setCurrentTab('cashlog');
+                            setNotifOpen(false);
+                          }}
+                          className="flex w-full gap-3 px-4 py-2.5 text-left hover:bg-amber-500/10 transition-colors border-b border-white/10 last:border-0"
+                        >
+                          <div className="mt-0.5 shrink-0 p-2 rounded-xl bg-amber-500/15 text-amber-700">
+                            <BellRing size={16} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-slate-900 leading-snug">
+                              Due {entry.dueDate}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">
+                              {entry.purpose || entry.description || entry.accountSource} ·{' '}
+                              {entry.currency === 'ETB' ? 'Br' : '$'}
+                              {entry.amount.toLocaleString()}
+                            </p>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
                 </div>
               </motion.div>
             )}
@@ -389,14 +463,7 @@ export const TopNav: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) =
             aria-haspopup="menu"
             className="flex items-center gap-2 md:gap-3 pl-1 pr-2 py-1.5 rounded-2xl hover:bg-white/35 transition-all duration-300 interactive-tap border border-transparent hover:border-white/25"
           >
-            <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl ring-2 ring-white/50 overflow-hidden shadow-md">
-              <img 
-                src={currentUser.avatar || 'https://picsum.photos/seed/dasa/100/100'} 
-                alt="" 
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
-            </div>
+            <NavUserAvatar avatarUrl={currentUser.avatar} name={currentUser.name} className="w-9 h-9 md:w-10 md:h-10" />
             <div className="text-left hidden lg:block min-w-0">
               <p className="text-sm font-semibold text-slate-900 truncate max-w-[120px]">{currentUser.name}</p>
               <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">{roleLabel}</p>

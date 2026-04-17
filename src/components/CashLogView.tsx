@@ -15,8 +15,10 @@ export const CashLogView: React.FC = () => {
     currency,
     formalLedger,
     promoteCashLogEntry,
+    searchQuery,
+    setSearchQuery,
+    debouncedSearchQuery,
   } = useAppContext();
-  const [searchQuery, setSearchQuery] = useState('');
   const [promotingId, setPromotingId] = useState<string | null>(null);
 
   const promotedCashLogIds = useMemo(() => {
@@ -28,7 +30,7 @@ export const CashLogView: React.FC = () => {
   }, [formalLedger]);
 
   const filteredLog = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const q = debouncedSearchQuery.trim().toLowerCase();
     return cashLog.filter((entry) =>
       !q
       || entry.description.toLowerCase().includes(q)
@@ -38,7 +40,7 @@ export const CashLogView: React.FC = () => {
       || entry.recordedBy.toLowerCase().includes(q)
       || entry.quickTags.some((tag) => tag.toLowerCase().includes(q))
     );
-  }, [cashLog, searchQuery]);
+  }, [cashLog, debouncedSearchQuery]);
 
   const balances = useMemo(() => getRunningBalance(filteredLog), [filteredLog]);
   const stats = useMemo(() => {

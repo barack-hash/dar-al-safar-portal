@@ -255,8 +255,15 @@ const ETicketModal: React.FC<ETicketModalProps> = ({ isOpen, onClose, booking, c
 
 export const TicketingView: React.FC = () => {
   const { bookings, issueTicket, cancelBooking, ticketingStats, clients, createBooking } = useClientsContext();
-  const { currency, convertForDisplay, isAddBookingModalOpen, setIsAddBookingModalOpen } = useUI();
-  const [searchQuery, setSearchQuery] = useState('');
+  const {
+    currency,
+    convertForDisplay,
+    isAddBookingModalOpen,
+    setIsAddBookingModalOpen,
+    searchQuery,
+    setSearchQuery,
+    debouncedSearchQuery,
+  } = useUI();
   const [selectedTicket, setSelectedTicket] = useState<BookingRecord | null>(null);
   const [isETicketModalOpen, setIsETicketModalOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<TicketStatus | 'ALL'>('ALL');
@@ -341,7 +348,7 @@ export const TicketingView: React.FC = () => {
   };
 
   const filteredBookings = bookings.filter((b) => {
-    const q = searchQuery.trim().toLowerCase();
+    const q = debouncedSearchQuery.trim().toLowerCase();
     const matchesSearch =
       !q ||
       b.pnr.toLowerCase().includes(q) ||

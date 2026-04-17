@@ -30,7 +30,7 @@ import { calculatePayroll } from '../lib/payrollEngine';
 
 export const StaffView: React.FC = () => {
   const { employees, addEmployee, updateEmployee, deleteEmployee, generatePayroll, transactions } = useClientsContext();
-  const { currency, convertForDisplay } = useUI();
+  const { currency, convertForDisplay, searchQuery, setSearchQuery, debouncedSearchQuery } = useUI();
   const { effectiveAccessRole, hasPermission } = useUser();
   const { registryMembers, refetchRegistry, loading: registryLoading } = useStaffRegistry();
   const [isTeamMemberModalOpen, setIsTeamMemberModalOpen] = useState(false);
@@ -38,7 +38,6 @@ export const StaffView: React.FC = () => {
   const [isHourlyModalOpen, setIsHourlyModalOpen] = useState(false);
   const [selectedEmployeeForPayslip, setSelectedEmployeeForPayslip] = useState<Employee | null>(null);
   const [selectedEmployeeForEdit, setSelectedEmployeeForEdit] = useState<Employee | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
   const [pageSize, setPageSize] = useState(20);
 
   const currentMonth = new Date().toLocaleString('default', { month: 'long' });
@@ -50,12 +49,26 @@ export const StaffView: React.FC = () => {
     tx.date.startsWith(currentYear.toString())
   );
 
-  const filteredEmployees = useMemo(() => 
-    employees.filter(emp => 
-      emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      emp.role.toLowerCase().includes(searchQuery.toLowerCase())
-    ),
-  [employees, searchQuery]);
+  const filteredEmployees = useMemo(() => {
+    const q = debouncedSearchQuery.trim().toLowerCase();
+    return employees.filter(
+      (emp) =>
+        !q ||
+        emp.name.toLowerCase().includes(q) ||
+        emp.role.toLowerCase().includes(q)
+    );
+  }, [employees, debouncedSearchQuery]);
+
+  const filteredRegistryMembers = useMemo(() => {
+    const q = debouncedSearchQuery.trim().toLowerCase();
+    if (!q) return registryMembers;
+    return registryMembers.filter(
+      (row) =>
+        (row.full_name ?? '').toLowerCase().includes(q) ||
+        row.email.toLowerCase().includes(q) ||
+        row.access_role.toLowerCase().includes(q)
+    );
+  }, [registryMembers, debouncedSearchQuery]);
 
   const visibleEmployees = useMemo(() => 
     filteredEmployees.slice(0, pageSize),
@@ -179,14 +192,16 @@ export const StaffView: React.FC = () => {
                     Loading directory…
                   </td>
                 </tr>
-              ) : registryMembers.length === 0 ? (
+              ) : filteredRegistryMembers.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-8 py-10 text-sm text-slate-500">
-                    No profiles yet. Super Admins can add a team member to create one.
+                    {registryMembers.length === 0
+                      ? 'No profiles yet. Super Admins can add a team member to create one.'
+                      : 'No portal profiles match your search.'}
                   </td>
                 </tr>
               ) : (
-                registryMembers.map((row) => (
+                filteredRegistryMembers.map((row) => (
                   <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-8 py-4 text-sm font-bold text-slate-900">{row.full_name || '—'}</td>
                     <td className="px-8 py-4 text-sm text-slate-600">{row.email}</td>

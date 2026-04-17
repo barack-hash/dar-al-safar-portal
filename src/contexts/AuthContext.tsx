@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState, useRef, type ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState, useRef, useCallback, type ReactNode } from 'react';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { loadSupabaseProfileForUser, type LoadedSupabaseProfile } from '../lib/loadSupabaseProfile';
@@ -17,6 +17,8 @@ type AuthContextValue = {
   requiresPasswordUpdate: boolean;
   /** Clears invite/recovery hash state after successful password update. */
   clearPasswordUpdateRequirement: () => void;
+  /** Re-load `profiles` row for the signed-in user (e.g. after profile edit). */
+  refreshProfile: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -109,6 +111,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const refreshProfile = useCallback(async () => {
+    if (!isSupabaseConfigured()) return;
+    const sb = getSupabase();
+    setProfileLoading(true);
+    try {
+      const { data: userData, error: userErr } = await sb.auth.getUser();
+      if (userErr || !userData.user) {
+        setProfile(null);
+        return;
+      }
+      const row = await loadSupabaseProfileForUser(userData.user);
+      setProfile(row);
+    } finally {
+      setProfileLoading(false);
+    }
+  }, []);
+
   const value = useMemo(
     () => ({
       session,
@@ -117,8 +136,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profileLoading,
       requiresPasswordUpdate,
       clearPasswordUpdateRequirement,
+      refreshProfile,
     }),
-    [session, loading, profile, profileLoading, requiresPasswordUpdate]
+    [session, loading, profile, profileLoading, requiresPasswordUpdate, refreshProfile]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

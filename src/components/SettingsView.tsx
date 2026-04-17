@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Users,
   Shield,
@@ -9,13 +9,18 @@ import {
   Eye,
   Pencil,
   Sparkles,
+  Camera,
+  Loader2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAppContext } from '../contexts/AppContext';
 import { useUser } from '../contexts/UserContext';
 import { useAuth } from '../contexts/AuthContext';
 import type { AppAccessRole, AppSectionId, AppTheme, SectionAccess } from '../types';
 import { ACCESS_ROLE_LABEL, APP_ACCESS_ROLES, APP_SECTION_META } from '../lib/appSettings';
 import { GlassSelect } from './ui/GlassSelect';
+import { isSupabaseConfigured } from '../lib/supabaseClient';
+import { useProfileEditor } from '../hooks/useProfileEditor';
 
 type SettingsTab = 'users' | 'permissions' | 'agency' | 'security' | 'appearance';
 
@@ -54,11 +59,37 @@ function Toggle({
   );
 }
 
+function profileInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase();
+  return (parts[0]?.charAt(0) || '?').toUpperCase();
+}
+
 export const SettingsView: React.FC = () => {
   const { employees, appSettings, setAppSettings } = useAppContext();
   const { hasPermission, currentUser, roleLabel } = useUser();
-  const { session } = useAuth();
+  const { session, refreshProfile, profileLoading } = useAuth();
+  const { uploadAvatar, updateProfile, uploading, saving } = useProfileEditor();
   const [tab, setTab] = useState<SettingsTab>('users');
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [draftName, setDraftName] = useState('');
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const revokePreviewIfBlob = useCallback((url: string | null) => {
+    if (url?.startsWith('blob:')) URL.revokeObjectURL(url);
+  }, []);
+
+  useEffect(() => {
+    if (!isEditingProfile) return;
+    setDraftName(currentUser.name);
+    setPendingFile(null);
+    setAvatarPreview((prev) => {
+      revokePreviewIfBlob(prev);
+      return currentUser.avatar || null;
+    });
+  }, [isEditingProfile, currentUser.name, currentUser.avatar, revokePreviewIfBlob]);
 
   const canEditSettings = hasPermission('settings', 'edit');
 
@@ -105,26 +136,187 @@ export const SettingsView: React.FC = () => {
   ];
 
   const profileEmail = session?.user?.email ?? currentUser.email ?? '—';
+  const profileBusy = uploading || saving || profileLoading;
+  const displayAvatarSrc = isEditingProfile ? avatarPreview || undefined : currentUser.avatar || undefined;
+
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    setPendingFile(f);
+    setAvatarPreview((prev) => {
+      revokePreviewIfBlob(prev);
+      return URL.createObjectURL(f);
+    });
+  };
+
+  const cancelProfileEdit = () => {
+    revokePreviewIfBlob(avatarPreview);
+    setAvatarPreview(null);
+    setPendingFile(null);
+    setIsEditingProfile(false);
+  };
+
+  const saveProfile = async () => {
+    if (!isSupabaseConfigured()) {
+      toast.error('Supabase is not configured', { description: 'Profile sync requires a connected project.' });
+      return;
+    }
+    const uid = session?.user?.id;
+    if (!uid) {
+      toast.error('Not signed in');
+      return;
+    }
+    const trimmed = draftName.trim();
+    if (!trimmed) {
+      toast.error('Name cannot be empty');
+      return;
+    }
+    const nameChanged = trimmed !== currentUser.name.trim();
+    try {
+      let avatarUrl: string | undefined;
+      if (pendingFile) {
+        avatarUrl = await uploadAvatar(pendingFile, uid);
+      }
+      if (!nameChanged && !avatarUrl) {
+        toast.message('No changes to save');
+        return;
+      }
+      await updateProfile({
+        ...(nameChanged ? { fullName: trimmed } : {}),
+        ...(avatarUrl ? { avatarUrl } : {}),
+      });
+      await refreshProfile();
+      toast.success('Profile updated');
+      revokePreviewIfBlob(avatarPreview);
+      setAvatarPreview(null);
+      setPendingFile(null);
+      setIsEditingProfile(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not save profile';
+      toast.error(msg);
+    }
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-16">
       <section className="glass-panel rounded-[2rem] border border-white/25 p-6 md:p-8 shadow-sm">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-4">My profile</p>
-        <p className="text-xs text-slate-500 mb-4 font-medium">Read-only — synced from your account and Supabase profile.</p>
-        <dl className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
           <div>
-            <dt className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Name</dt>
-            <dd className="text-sm font-bold text-slate-900">{currentUser.name}</dd>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">My profile</p>
+            <p className="text-xs text-slate-500 font-medium max-w-md">
+              {isEditingProfile
+                ? 'Update your display name and photo. Avatar images are stored in Supabase Storage.'
+                : 'Synced from your account and Supabase profile.'}
+            </p>
           </div>
-          <div>
-            <dt className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Email</dt>
-            <dd className="text-sm font-bold text-slate-900 break-all">{profileEmail}</dd>
+          <div className="flex flex-wrap gap-2">
+            {!isEditingProfile ? (
+              <button
+                type="button"
+                onClick={() => setIsEditingProfile(true)}
+                disabled={!isSupabaseConfigured() || profileLoading}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-bold hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <Pencil size={16} />
+                Edit profile
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={cancelProfileEdit}
+                  disabled={profileBusy}
+                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveProfile()}
+                  disabled={profileBusy}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {profileBusy ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                  Save
+                </button>
+              </>
+            )}
           </div>
-          <div>
-            <dt className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Role</dt>
-            <dd className="text-sm font-bold text-slate-900">{roleLabel}</dd>
+        </div>
+
+        {!isSupabaseConfigured() && (
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200/80 rounded-xl px-4 py-3 mb-6 font-medium">
+            Connect Supabase in your environment to edit and sync your profile.
+          </p>
+        )}
+
+        <div className="flex flex-col md:flex-row gap-8 md:gap-10">
+          <div className="flex flex-col items-center md:items-start gap-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="hidden"
+              onChange={handleAvatarFileChange}
+            />
+            <button
+              type="button"
+              disabled={!isEditingProfile || profileBusy}
+              onClick={() => fileInputRef.current?.click()}
+              className={`relative w-28 h-28 rounded-full overflow-hidden ring-4 ring-white shadow-lg transition-all ${
+                isEditingProfile && !profileBusy
+                  ? 'cursor-pointer hover:ring-emerald-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2'
+                  : 'cursor-default opacity-95'
+              }`}
+              aria-label={isEditingProfile ? 'Change profile photo' : 'Profile photo'}
+            >
+              {displayAvatarSrc ? (
+                <img src={displayAvatarSrc} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-emerald-600 to-emerald-900 text-white text-2xl font-black">
+                  {profileInitials(isEditingProfile ? draftName || currentUser.name : currentUser.name)}
+                </div>
+              )}
+              {isEditingProfile && (
+                <div className="absolute inset-0 bg-slate-900/40 flex items-center justify-center pointer-events-none">
+                  <Camera className="text-white drop-shadow-md" size={28} />
+                </div>
+              )}
+            </button>
+            {isEditingProfile && (
+              <p className="text-[10px] text-slate-500 font-medium text-center md:text-left max-w-[200px]">
+                Tap to choose a new photo (JPEG, PNG, WebP, or GIF · max 5 MB)
+              </p>
+            )}
           </div>
-        </dl>
+
+          <dl className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="sm:col-span-2">
+              <dt className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Name</dt>
+              <dd className="text-sm font-bold text-slate-900">
+                {isEditingProfile ? (
+                  <input
+                    value={draftName}
+                    onChange={(e) => setDraftName(e.target.value)}
+                    disabled={profileBusy}
+                    className="w-full max-w-md rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500/25 disabled:opacity-50"
+                  />
+                ) : (
+                  currentUser.name
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Email</dt>
+              <dd className="text-sm font-bold text-slate-900 break-all">{profileEmail}</dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Role</dt>
+              <dd className="text-sm font-bold text-slate-900">{roleLabel}</dd>
+            </div>
+          </dl>
+        </div>
       </section>
 
       <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 border-b border-slate-200/80 pb-8">
