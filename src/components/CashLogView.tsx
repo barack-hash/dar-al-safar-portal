@@ -22,6 +22,8 @@ export const CashLogView: React.FC = () => {
       !q
       || entry.description.toLowerCase().includes(q)
       || entry.accountSource.toLowerCase().includes(q)
+      || (entry.counterpartyName ?? '').toLowerCase().includes(q)
+      || (entry.purpose ?? '').toLowerCase().includes(q)
       || entry.recordedBy.toLowerCase().includes(q)
       || entry.quickTags.some((tag) => tag.toLowerCase().includes(q))
     );
@@ -112,6 +114,7 @@ export const CashLogView: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search source, tags, description..."
+              
               className="pl-10 pr-3 py-2 rounded-xl glass-panel border border-white/40 text-sm text-slate-700"
             />
           </div>
@@ -147,6 +150,20 @@ export const CashLogView: React.FC = () => {
                       {positive ? '+' : '-'} {entry.currency === 'ETB' ? 'Br' : '$'} {entry.amount.toLocaleString()}
                     </p>
                     <p className="text-sm font-semibold text-slate-800">{entry.accountSource}</p>
+                    <div className="space-y-1">
+                      <p
+                        className={`inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium ${
+                          positive
+                            ? 'bg-emerald-500/10 text-emerald-700'
+                            : 'bg-rose-500/10 text-rose-700'
+                        }`}
+                      >
+                        From/To: {entry.counterpartyName?.trim() || '—'}
+                      </p>
+                      <p className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium bg-slate-500/10 text-slate-700">
+                        Purpose: {entry.purpose?.trim() || '—'}
+                      </p>
+                    </div>
                     <p className="text-sm text-slate-600">{entry.description || 'No description'}</p>
                     <div className="flex flex-wrap gap-2">
                       {entry.quickTags.map((tag) => (

@@ -12,13 +12,33 @@ type Props = {
   addCashLogEntry: (entry: Omit<CashLogEntry, 'id'>) => Promise<CashLogEntry>;
 };
 
-const QUICK_TAGS = ['#Rent', '#LoanIn', '#LoanOut', '#Salary', '#SalaryAdvance'] as const;
+const QUICK_TAGS = [
+  '#Rent',
+  '#LoanIn',
+  '#LoanOut',
+  '#Salary',
+  '#SalaryAdvance',
+  '#Personal',
+  '#Emergency',
+  '#Office',
+] as const;
+const PURPOSE_OPTIONS = [
+  'Personal Withdrawal',
+  'Emergency Float',
+  'Office Supplies',
+  'Visa Deposit',
+  'Salary Advance',
+  'Loan Settlement',
+  'Other',
+] as const;
 
 export const QuickCashEntryDrawer: React.FC<Props> = ({ isOpen, onClose, clients, addCashLogEntry }) => {
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState<CashLogCurrency>('ETB');
   const [transactionType, setTransactionType] = useState<CashLogTransactionType>('INCOME');
   const [accountSource, setAccountSource] = useState('Cash in Hand');
+  const [counterpartyName, setCounterpartyName] = useState('');
+  const [purpose, setPurpose] = useState<(typeof PURPOSE_OPTIONS)[number]>('Personal Withdrawal');
   const [linkedClientId, setLinkedClientId] = useState('');
   const [description, setDescription] = useState('');
   const [quickTags, setQuickTags] = useState<string[]>([]);
@@ -37,6 +57,8 @@ export const QuickCashEntryDrawer: React.FC<Props> = ({ isOpen, onClose, clients
     setCurrency('ETB');
     setTransactionType('INCOME');
     setAccountSource('Cash in Hand');
+    setCounterpartyName('');
+    setPurpose('Personal Withdrawal');
     setLinkedClientId('');
     setDescription('');
     setQuickTags([]);
@@ -79,6 +101,8 @@ export const QuickCashEntryDrawer: React.FC<Props> = ({ isOpen, onClose, clients
         currency,
         transactionType,
         accountSource: accountSource.trim(),
+        counterpartyName: counterpartyName.trim() || undefined,
+        purpose,
         linkedClientId: linkedClientId || undefined,
         recordedBy,
         description:
@@ -186,6 +210,31 @@ export const QuickCashEntryDrawer: React.FC<Props> = ({ isOpen, onClose, clients
                     className="mt-1 w-full px-3 py-2.5 rounded-xl border border-white/40 bg-white/70 text-sm"
                     placeholder="Cash in Hand / Personal CBE"
                   />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Counterparty / Lender</label>
+                  <input
+                    value={counterpartyName}
+                    onChange={(e) => setCounterpartyName(e.target.value)}
+                    className="mt-1 w-full px-3 py-2.5 rounded-xl border border-white/40 bg-white/70 text-sm"
+                    placeholder="Uncle Ibrahim / Abyssinia Bank"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Purpose</label>
+                  <select
+                    value={purpose}
+                    onChange={(e) => setPurpose(e.target.value as (typeof PURPOSE_OPTIONS)[number])}
+                    className="mt-1 w-full px-3 py-2.5 rounded-xl border border-white/40 bg-white/70 text-sm"
+                  >
+                    {PURPOSE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>

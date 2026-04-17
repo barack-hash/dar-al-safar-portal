@@ -1,11 +1,11 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import {
-  Plane,
-  Clock,
-  CheckCircle2,
-  Search,
-  Filter,
-  Download,
+import { 
+  Plane, 
+  Clock, 
+  CheckCircle2, 
+  Search, 
+  Filter, 
+  Download, 
   Plus,
   MoreHorizontal,
   ArrowRight,
@@ -358,7 +358,7 @@ export const TicketingView: React.FC = () => {
       b.pnr,
       getClientName(b.clientId),
       b.itinerarySummary ||
-        `${b.itinerary[0]?.departure.airportCode} -> ${b.itinerary[b.itinerary.length - 1]?.arrival.airportCode}`,
+      `${b.itinerary[0]?.departure.airportCode} -> ${b.itinerary[b.itinerary.length - 1]?.arrival.airportCode}`,
       b.status,
       b.pricing.netFare,
       b.pricing.markup,
@@ -378,24 +378,24 @@ export const TicketingView: React.FC = () => {
   };
 
   const stats = [
-    {
-      label: 'Active Holds',
-      value: ticketingStats.activeHolds,
-      icon: Clock,
+    { 
+      label: 'Active Holds', 
+      value: ticketingStats.activeHolds, 
+      icon: Clock, 
       accent: 'text-amber-600',
       iconBg: 'bg-amber-500/15',
     },
-    {
-      label: 'Tickets Issued (Month)',
-      value: ticketingStats.ticketsIssuedThisMonth,
-      icon: CheckCircle2,
+    { 
+      label: 'Tickets Issued (Month)', 
+      value: ticketingStats.ticketsIssuedThisMonth, 
+      icon: CheckCircle2, 
       accent: 'text-emerald-600',
       iconBg: 'bg-emerald-500/15',
     },
-    {
-      label: 'Expected Markup',
-      value: `${currency === 'USD' ? '$' : currency === 'SAR' ? 'SR' : 'Br'}${ticketingStats.expectedMarkup.toLocaleString()}`,
-      icon: ShieldCheck,
+    { 
+      label: 'Expected Markup', 
+      value: `${currency === 'USD' ? '$' : currency === 'SAR' ? 'SR' : 'Br'}${ticketingStats.expectedMarkup.toLocaleString()}`, 
+      icon: ShieldCheck, 
       accent: 'text-emerald-600',
       iconBg: 'bg-emerald-500/15',
     },
@@ -421,7 +421,7 @@ export const TicketingView: React.FC = () => {
           <p className="text-slate-500 mt-1">Enterprise GDS Interface & PNR Management.</p>
         </div>
         <div className="flex gap-3">
-          <button
+          <button 
             type="button"
             onClick={() => setIsAddBookingModalOpen(true)}
             className="flex items-center justify-center gap-2 px-6 py-3 bg-emerald-500 text-white rounded-2xl font-bold shadow-lg shadow-emerald-500/25 hover:bg-emerald-600 transition-all active:scale-95"
@@ -433,14 +433,14 @@ export const TicketingView: React.FC = () => {
       </header>
 
       <NewGDSBookingDrawer
-        isOpen={isAddBookingModalOpen}
-        onClose={() => setIsAddBookingModalOpen(false)}
+        isOpen={isAddBookingModalOpen} 
+        onClose={() => setIsAddBookingModalOpen(false)} 
         clients={clients}
         staffOptions={staffOptions}
         createBooking={createBooking}
       />
 
-      <ETicketModal
+      <ETicketModal 
         isOpen={isETicketModalOpen}
         onClose={() => setIsETicketModalOpen(false)}
         booking={selectedTicket}
@@ -529,8 +529,8 @@ export const TicketingView: React.FC = () => {
           <div className="flex flex-wrap gap-3 items-center">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input
-                type="text"
+              <input 
+                type="text" 
                 placeholder="Search PNR, client, route…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -538,7 +538,7 @@ export const TicketingView: React.FC = () => {
               />
             </div>
             <div className="relative" ref={filterRef}>
-              <button
+              <button 
                 type="button"
                 onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
                 className={`p-2.5 rounded-xl transition-all glass-panel border border-white/25 ${
@@ -547,7 +547,7 @@ export const TicketingView: React.FC = () => {
               >
                 <Filter size={20} />
               </button>
-
+              
               <AnimatePresence>
                 {isFilterMenuOpen && (
                   <motion.div
@@ -565,7 +565,7 @@ export const TicketingView: React.FC = () => {
                           setIsFilterMenuOpen(false);
                         }}
                         className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                          statusFilter === status
+                          statusFilter === status 
                             ? 'bg-emerald-500/15 text-emerald-700'
                             : 'text-slate-600 hover:bg-white/40'
                         }`}
@@ -577,7 +577,7 @@ export const TicketingView: React.FC = () => {
                 )}
               </AnimatePresence>
             </div>
-            <button
+            <button 
               type="button"
               onClick={exportTicketingCSV}
               className="p-2.5 glass-panel border border-white/25 text-slate-600 rounded-xl hover:bg-white/30 transition-all"
@@ -602,7 +602,7 @@ export const TicketingView: React.FC = () => {
 
                 return (
                   <motion.div
-                    key={booking.id}
+                    key={booking.id} 
                     layout
                     className={`glass-panel rounded-2xl border p-5 flex flex-col gap-4 transition-shadow ${
                       booking.status === 'CANCELLED' ? 'opacity-60 grayscale-[0.3]' : ''
@@ -619,7 +619,7 @@ export const TicketingView: React.FC = () => {
                         <p className="text-[11px] font-semibold text-emerald-700 mt-0.5">
                           {booking.airlineCode} · {booking.itinerarySummary}
                         </p>
-                      </div>
+                    </div>
                       <span
                         className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border ${getStatusColor(booking.status)}`}
                       >
@@ -636,7 +636,7 @@ export const TicketingView: React.FC = () => {
                       <span className="font-semibold">
                         {booking.itinerary[0]?.departure.airportCode} →{' '}
                         {booking.itinerary[booking.itinerary.length - 1]?.arrival.airportCode}
-                      </span>
+                    </span>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -661,73 +661,73 @@ export const TicketingView: React.FC = () => {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/20">
-                      {booking.status === 'ON_HOLD' && (
-                        <button
+                          {booking.status === 'ON_HOLD' && (
+                            <button 
                           type="button"
                           onClick={() => {
                             setIssueForBooking(booking);
                             setIssueTicketNumber('');
                           }}
                           className="px-5 py-2.5 bg-emerald-500 text-white text-sm font-black rounded-xl shadow-lg shadow-emerald-500/35 hover:bg-emerald-600 transition-all order-first"
-                        >
-                          Issue Ticket
-                        </button>
-                      )}
-                      {booking.status === 'TICKETED' && (
-                        <button
+                            >
+                              Issue Ticket
+                            </button>
+                          )}
+                          {booking.status === 'TICKETED' && (
+                            <button 
                           type="button"
-                          onClick={() => {
-                            setSelectedTicket(booking);
-                            setIsETicketModalOpen(true);
-                          }}
+                              onClick={() => {
+                                setSelectedTicket(booking);
+                                setIsETicketModalOpen(true);
+                              }}
                           className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-all"
-                        >
-                          <Printer size={14} />
-                          E-Ticket
-                        </button>
-                      )}
+                            >
+                              <Printer size={14} />
+                              E-Ticket
+                            </button>
+                          )}
                       <div className="relative ml-auto">
-                        <button
+                            <button 
                           type="button"
-                          onClick={() => setActiveDropdownId(activeDropdownId === booking.id ? null : booking.id)}
+                              onClick={() => setActiveDropdownId(activeDropdownId === booking.id ? null : booking.id)}
                           className={`p-2 rounded-xl transition-all row-dropdown-trigger glass-panel border border-white/20 ${
                             activeDropdownId === booking.id ? 'text-slate-900' : 'text-slate-400'
                           }`}
-                        >
-                          <MoreHorizontal size={18} />
-                        </button>
-
-                        <AnimatePresence>
-                          {activeDropdownId === booking.id && (
-                            <motion.div
+                            >
+                              <MoreHorizontal size={18} />
+                            </button>
+                            
+                            <AnimatePresence>
+                              {activeDropdownId === booking.id && (
+                                <motion.div
                               initial={{ opacity: 0, scale: 0.95, y: 10 }}
                               animate={{ opacity: 1, scale: 1, y: 0 }}
                               exit={{ opacity: 0, scale: 0.95, y: 10 }}
                               className="absolute right-0 mt-2 w-48 glass-panel rounded-2xl border border-white/25 p-2 z-50 shadow-xl"
-                            >
-                              {(booking.status === 'ON_HOLD' || booking.status === 'TICKETED') && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    void cancelBooking(booking.id);
-                                    setActiveDropdownId(null);
-                                  }}
-                                  className="w-full text-left px-4 py-2 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-500/10 transition-all flex items-center gap-2"
                                 >
-                                  <Trash2 size={14} />
-                                  Cancel Booking
-                                </button>
+                                  {(booking.status === 'ON_HOLD' || booking.status === 'TICKETED') && (
+                                    <button 
+                                  type="button"
+                                      onClick={() => {
+                                    void cancelBooking(booking.id);
+                                        setActiveDropdownId(null);
+                                      }}
+                                  className="w-full text-left px-4 py-2 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-500/10 transition-all flex items-center gap-2"
+                                    >
+                                      <Trash2 size={14} />
+                                      Cancel Booking
+                                    </button>
+                                  )}
+                                </motion.div>
                               )}
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    </div>
+                            </AnimatePresence>
+                          </div>
+                        </div>
                   </motion.div>
-                );
-              })}
-            </div>
-          )}
+              );
+            })}
+                    </div>
+              )}
         </div>
       </div>
     </div>

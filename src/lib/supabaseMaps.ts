@@ -75,6 +75,8 @@ export interface CashLogRow {
   currency: 'ETB' | 'USD';
   transaction_type: 'INCOME' | 'EXPENSE' | 'LOAN_REPAYMENT';
   account_source: string;
+  counterparty_name: string | null;
+  purpose: string | null;
   linked_client_id: string | null;
   recorded_by: string;
   description: string;
@@ -344,6 +346,8 @@ export function cashLogFromRow(r: CashLogRow): CashLogEntry {
     currency: r.currency,
     transactionType: r.transaction_type,
     accountSource: r.account_source,
+    counterpartyName: r.counterparty_name ?? undefined,
+    purpose: r.purpose ?? undefined,
     linkedClientId: r.linked_client_id ?? undefined,
     recordedBy: r.recorded_by,
     description: r.description,
@@ -363,6 +367,8 @@ export function cashLogToInsert(e: CashLogEntry): CashLogRow {
     currency: e.currency,
     transaction_type: e.transactionType,
     account_source: e.accountSource,
+    counterparty_name: e.counterpartyName ?? null,
+    purpose: e.purpose ?? null,
     linked_client_id: e.linkedClientId ?? null,
     recorded_by: e.recordedBy,
     description: e.description,

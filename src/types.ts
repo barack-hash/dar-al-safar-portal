@@ -350,6 +350,8 @@ export interface CashLogEntry {
   currency: CashLogCurrency;
   transactionType: CashLogTransactionType;
   accountSource: string;
+  counterpartyName?: string;
+  purpose?: string;
   linkedClientId?: string;
   recordedBy: string;
   description: string;
