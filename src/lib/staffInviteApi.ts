@@ -16,6 +16,7 @@ export async function inviteTeamMemberViaApi(params: {
     throw new Error('You must be signed in');
   }
 
+  /** Vercel: `api/staff/invite-team-member.ts` → same path. Local: use `npx vercel dev` to run API + frontend. */
   const res = await fetch('/api/staff/invite-team-member', {
     method: 'POST',
     headers: {

@@ -1,4 +1,3 @@
-import type { Request, Response } from 'express';
 import { createClient } from '@supabase/supabase-js';
 
 function isSuperAdminRole(raw: string | null | undefined): boolean {
@@ -22,22 +21,43 @@ function portalPermissions(portalRole: string): string[] {
   ];
 }
 
-export async function handleInviteTeamMember(req: Request, res: Response): Promise<void> {
+export type InviteTeamMemberCoreInput = {
+  method: string;
+  authorization: string | undefined;
+  body: unknown;
+};
+
+export type InviteTeamMemberCoreResult = {
+  status: number;
+  body: Record<string, unknown>;
+};
+
+/**
+ * Shared invite logic for Vercel serverless (and any other runtime).
+ * Uses `process.env.SUPABASE_SERVICE_ROLE_KEY` when set; otherwise profile-only fallback.
+ */
+export async function runInviteTeamMember(input: InviteTeamMemberCoreInput): Promise<InviteTeamMemberCoreResult> {
   const url = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
   const anonKey = (process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '').trim();
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 
-  if (!url || !anonKey) {
-    res.status(500).json({ error: 'Server missing Supabase URL or anon key (SUPABASE_URL / VITE_SUPABASE_URL)' });
-    return;
+  if (input.method !== 'POST') {
+    return { status: 405, body: { error: 'Method not allowed' } };
   }
 
-  const authHeader = req.headers.authorization;
+  if (!url || !anonKey) {
+    return {
+      status: 500,
+      body: { error: 'Server missing Supabase URL or anon key (SUPABASE_URL / VITE_SUPABASE_URL)' },
+    };
+  }
+
   const token =
-    typeof authHeader === 'string' && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    typeof input.authorization === 'string' && input.authorization.startsWith('Bearer ')
+      ? input.authorization.slice(7)
+      : null;
   if (!token) {
-    res.status(401).json({ error: 'Missing Authorization bearer token' });
-    return;
+    return { status: 401, body: { error: 'Missing Authorization bearer token' } };
   }
 
   const userClient = createClient(url, anonKey, {
@@ -47,8 +67,7 @@ export async function handleInviteTeamMember(req: Request, res: Response): Promi
 
   const { data: userData, error: userErr } = await userClient.auth.getUser(token);
   if (userErr || !userData.user) {
-    res.status(401).json({ error: 'Invalid or expired session' });
-    return;
+    return { status: 401, body: { error: 'Invalid or expired session' } };
   }
 
   let role: string | undefined;
@@ -67,37 +86,34 @@ export async function handleInviteTeamMember(req: Request, res: Response): Promi
     role = p2?.access_role as string | undefined;
   }
   if (!isSuperAdminRole(role)) {
-    res.status(403).json({ error: 'Only Super Admins can invite team members' });
-    return;
+    return { status: 403, body: { error: 'Only Super Admins can invite team members' } };
   }
 
-  const { fullName, email, portalRole } = req.body as {
+  const parsed = input.body as {
     fullName?: string;
     email?: string;
     portalRole?: string;
   };
 
-  if (!fullName?.trim() || !email?.trim() || !portalRole) {
-    res.status(400).json({ error: 'fullName, email, and portalRole are required' });
-    return;
+  if (!parsed?.fullName?.trim() || !parsed?.email?.trim() || !parsed?.portalRole) {
+    return { status: 400, body: { error: 'fullName, email, and portalRole are required' } };
   }
 
-  const em = email.trim().toLowerCase();
-  if (portalRole !== 'agent' && portalRole !== 'admin') {
-    res.status(400).json({ error: 'portalRole must be "agent" or "admin"' });
-    return;
+  const em = parsed.email.trim().toLowerCase();
+  if (parsed.portalRole !== 'agent' && parsed.portalRole !== 'admin') {
+    return { status: 400, body: { error: 'portalRole must be "agent" or "admin"' } };
   }
 
-  const permissions = portalPermissions(portalRole);
-  /** Admin = elevated portal role with the generated permission list (not SUPERADMIN, which bypasses checks). */
-  const access_role = portalRole === 'admin' ? 'MANAGER' : 'AGENT';
-  const legacy_role = portalRole === 'admin' ? 'ADMIN' : 'AGENT';
+  const permissions = portalPermissions(parsed.portalRole);
+  const access_role = parsed.portalRole === 'admin' ? 'MANAGER' : 'AGENT';
+  const legacy_role = parsed.portalRole === 'admin' ? 'ADMIN' : 'AGENT';
+  const fullName = parsed.fullName.trim();
 
   if (!serviceKey) {
     const { error: upErr } = await userClient.from('profiles').upsert(
       {
         email: em,
-        full_name: fullName.trim(),
+        full_name: fullName,
         access_role,
         legacy_role,
         permissions,
@@ -105,18 +121,19 @@ export async function handleInviteTeamMember(req: Request, res: Response): Promi
       { onConflict: 'email' }
     );
     if (upErr) {
-      res.status(400).json({ error: upErr.message });
-      return;
+      return { status: 400, body: { error: upErr.message } };
     }
-    res.json({
-      ok: true,
-      invited: false,
-      userId: null,
-      fallback: true,
-      message:
-        'Profile created. Please trigger the official Auth Invite link from the Supabase Authentication Dashboard.',
-    });
-    return;
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        invited: false,
+        userId: null,
+        fallback: true,
+        message:
+          'Profile created. Please trigger the official Auth Invite link from the Supabase Authentication Dashboard.',
+      },
+    };
   }
 
   const admin = createClient(url, serviceKey, {
@@ -127,7 +144,7 @@ export async function handleInviteTeamMember(req: Request, res: Response): Promi
   let invited = false;
 
   const { data: inv, error: invErr } = await admin.auth.admin.inviteUserByEmail(em, {
-    data: { full_name: fullName.trim() },
+    data: { full_name: fullName },
   });
 
   if (invErr) {
@@ -135,19 +152,16 @@ export async function handleInviteTeamMember(req: Request, res: Response): Promi
     if (/already|registered|exists/i.test(msg)) {
       const { data: list, error: listErr } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
       if (listErr) {
-        res.status(400).json({ error: invErr.message });
-        return;
+        return { status: 400, body: { error: invErr.message } };
       }
       const users = list?.users ?? [];
       const found = users.find((u) => u.email?.toLowerCase() === em);
       userId = found?.id ?? null;
       if (!userId) {
-        res.status(400).json({ error: invErr.message });
-        return;
+        return { status: 400, body: { error: invErr.message } };
       }
     } else {
-      res.status(400).json({ error: invErr.message });
-      return;
+      return { status: 400, body: { error: invErr.message } };
     }
   } else {
     userId = inv.user?.id ?? null;
@@ -155,15 +169,14 @@ export async function handleInviteTeamMember(req: Request, res: Response): Promi
   }
 
   if (!userId) {
-    res.status(500).json({ error: 'Could not resolve auth user id' });
-    return;
+    return { status: 500, body: { error: 'Could not resolve auth user id' } };
   }
 
   const { error: upErr } = await admin.from('profiles').upsert(
     {
       user_id: userId,
       email: em,
-      full_name: fullName.trim(),
+      full_name: fullName,
       access_role,
       legacy_role,
       permissions,
@@ -172,9 +185,8 @@ export async function handleInviteTeamMember(req: Request, res: Response): Promi
   );
 
   if (upErr) {
-    res.status(400).json({ error: upErr.message });
-    return;
+    return { status: 400, body: { error: upErr.message } };
   }
 
-  res.json({ ok: true, invited, userId });
+  return { status: 200, body: { ok: true, invited, userId } };
 }
