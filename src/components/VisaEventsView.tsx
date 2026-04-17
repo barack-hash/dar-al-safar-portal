@@ -19,16 +19,18 @@ import {
   X,
   Star,
   Upload,
-  Check
+  Check,
+  Plane
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useClientsContext, useAppContext } from '../contexts/AppContext';
-import { VisaApplication, EventBooking, VisaStatus, EventCategory, EventStatus, VisaDocumentStatus } from '../types';
+import { VisaApplication, VisaStatus, EventCategory, EventStatus, VisaDocumentStatus } from '../types';
 import { toast } from 'sonner';
 import { GlassSelect } from './ui/GlassSelect';
 import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { VisaKanbanBoard } from './visa/VisaKanbanBoard';
 import { NewVisaApplicationDrawer, type StaffOption } from './visa/NewVisaApplicationDrawer';
+import { NewArrangementDrawer } from './concierge/NewArrangementDrawer';
 
 const VISA_STATUS_CONFIG: Record<VisaStatus, { label: string; progress: number; color: string; icon: LucideIcon }> = {
   GATHERING_DOCS: { label: 'Gathering Docs', progress: 15, color: 'bg-amber-500', icon: FileText },
@@ -40,38 +42,58 @@ const VISA_STATUS_CONFIG: Record<VisaStatus, { label: string; progress: number; 
 };
 
 const EVENT_CATEGORY_CONFIG: Record<EventCategory, { label: string; color: string; icon: LucideIcon }> = {
-  'HOTEL': { label: 'Hotel', color: 'bg-emerald-100 text-emerald-700', icon: Hotel },
-  'TOUR': { label: 'Tour', color: 'bg-amber-100 text-amber-700', icon: Compass },
-  'TRANSFER': { label: 'Transfer', color: 'bg-slate-100 text-slate-700', icon: Car },
-  'VIP_ACCESS': { label: 'VIP Access', color: 'bg-purple-100 text-purple-700', icon: ShieldCheck },
+  HOTEL: { label: 'Hotel', color: 'bg-emerald-100 text-emerald-700', icon: Hotel },
+  TOUR: { label: 'Tour', color: 'bg-amber-100 text-amber-700', icon: Compass },
+  TRANSFER: { label: 'Transfer', color: 'bg-slate-100 text-slate-700', icon: Car },
+  FLIGHT: { label: 'Flight', color: 'bg-sky-100 text-sky-700', icon: Plane },
+  VIP_ACCESS: { label: 'VIP Access', color: 'bg-purple-100 text-purple-700', icon: ShieldCheck },
 };
+
+const ARRANGEMENT_STATUS_PIPELINE: { status: EventStatus; label: string }[] = [
+  { status: 'PLANNING', label: 'Planning' },
+  { status: 'AWAITING_PAYMENT', label: 'Awaiting payment' },
+  { status: 'CONFIRMED', label: 'Confirmed' },
+  { status: 'COMPLETED', label: 'Completed' },
+  { status: 'CANCELLED', label: 'Cancelled' },
+];
+
+const EVENT_STATUS_PILL_CLASS: Record<EventStatus, string> = {
+  PLANNING: 'bg-amber-100 text-amber-900 ring-1 ring-amber-200/80 dark:bg-amber-500/15 dark:text-amber-100 dark:ring-amber-500/30',
+  AWAITING_PAYMENT:
+    'bg-violet-100 text-violet-900 ring-1 ring-violet-200/80 dark:bg-violet-500/15 dark:text-violet-100 dark:ring-violet-500/30',
+  CONFIRMED: 'bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200/80 dark:bg-emerald-500/15 dark:text-emerald-100 dark:ring-emerald-500/30',
+  COMPLETED: 'bg-slate-200 text-slate-800 ring-1 ring-slate-300/80 dark:bg-slate-600/25 dark:text-slate-100 dark:ring-slate-500/40',
+  CANCELLED: 'bg-rose-100 text-rose-900 ring-1 ring-rose-200/80 dark:bg-rose-500/15 dark:text-rose-100 dark:ring-rose-500/30',
+};
+
+const EVENT_STATUS_SELECT_OPTIONS: { value: EventStatus; label: string }[] = ARRANGEMENT_STATUS_PIPELINE.map(({ status, label }) => ({
+  value: status,
+  label,
+}));
+
+function staffInitialsFromName(name: string | undefined): string {
+  if (!name?.trim()) return '?';
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] ?? ''}${parts[parts.length - 1][0] ?? ''}`.toUpperCase();
+}
 
 export const VisaEventsView: React.FC = () => {
   const [activeSubView, setActiveSubView] = useState<'visa' | 'concierge'>('visa');
   const { visas, events, clients, updateVisa, updateVisaStatus, updateEventStatus, addEvent, addVisa, updateVisaDocument } = useClientsContext();
   const { isAddVisaModalOpen, setIsAddVisaModalOpen } = useAppContext();
   const [isNewVisaDrawerOpen, setIsNewVisaDrawerOpen] = useState(false);
-  const [isNewEventModalOpen, setIsNewEventModalOpen] = useState(false);
+  const [isNewArrangementDrawerOpen, setIsNewArrangementDrawerOpen] = useState(false);
   const [visaSearch, setVisaSearch] = useState('');
   const [selectedVisaForManagement, setSelectedVisaForManagement] = useState<VisaApplication | null>(null);
   const [staffByUserId, setStaffByUserId] = useState<Map<string, string>>(() => new Map());
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([]);
-  const [arrangementClientId, setArrangementClientId] = useState('');
-  const [arrangementCategory, setArrangementCategory] = useState<EventCategory>('HOTEL');
-
   useEffect(() => {
     if (isAddVisaModalOpen) {
       setIsNewVisaDrawerOpen(true);
       setIsAddVisaModalOpen(false);
     }
   }, [isAddVisaModalOpen, setIsAddVisaModalOpen]);
-
-  useEffect(() => {
-    if (isNewEventModalOpen) {
-      setArrangementClientId('');
-      setArrangementCategory('HOTEL');
-    }
-  }, [isNewEventModalOpen]);
 
   useEffect(() => {
     if (!isSupabaseConfigured()) {
@@ -192,39 +214,6 @@ export const VisaEventsView: React.FC = () => {
     updateVisa(selectedVisaForManagement.id, { appointmentDate: date });
     setSelectedVisaForManagement(prev => prev ? { ...prev, appointmentDate: date } : null);
     toast.success('Appointment date updated');
-  };
-
-  const handleCreateArrangement = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    try {
-      const formData = new FormData(e.currentTarget);
-      const clientId = String(formData.get('clientId') || '');
-      const startDate = String(formData.get('startDate') || '');
-      const endDate = String(formData.get('endDate') || '');
-
-      if (!clientId) {
-        toast.error('Please select a client.');
-        return;
-      }
-
-      if (!startDate || !endDate || new Date(endDate) < new Date(startDate)) {
-        toast.error('Invalid date range for arrangement.');
-        return;
-      }
-
-      addEvent({
-        clientId,
-        title: String(formData.get('title') || ''),
-        category: String(formData.get('category') || 'HOTEL') as EventCategory,
-        startDate,
-        endDate,
-        status: 'PLANNING'
-      });
-      toast.success('Arrangement created successfully.');
-      setIsNewEventModalOpen(false);
-    } catch (error) {
-      toast.error('Failed to create arrangement. Please try again.');
-    }
   };
 
   return (
@@ -444,204 +433,147 @@ export const VisaEventsView: React.FC = () => {
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="p-2.5 bg-active-gold/10 text-active-gold rounded-xl">
+                <div className="p-2.5 bg-emerald-500/10 text-emerald-600 rounded-xl">
                   <Star size={20} />
                 </div>
                 <h3 className="text-xl font-bold text-slate-900">Luxury Arrangements</h3>
               </div>
               <button 
-                onClick={() => setIsNewEventModalOpen(true)}
-                className="flex items-center gap-2 px-6 py-3 bg-active-green text-white rounded-2xl font-bold text-sm shadow-lg shadow-active-green/20 hover:bg-active-green/90 transition-all hover:-translate-y-0.5"
+                type="button"
+                onClick={() => setIsNewArrangementDrawerOpen(true)}
+                className="flex items-center gap-2 px-6 py-3 bg-emerald-500 text-white rounded-2xl font-bold text-sm shadow-lg shadow-emerald-500/25 hover:bg-emerald-600 transition-all hover:-translate-y-0.5"
               >
                 <Plus size={18} />
                 New Arrangement
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {events.length === 0 ? (
-                <div className="col-span-full glass-card rounded-3xl p-14 md:p-16 text-center border-white/25">
-                  <Star className="mx-auto text-emerald-500/70 mb-5" size={40} strokeWidth={1.25} />
-                  <h3 className="text-xl font-bold text-slate-900">No luxury arrangements yet</h3>
-                  <p className="text-slate-500 mt-3 max-w-lg mx-auto text-sm font-medium leading-relaxed">
-                    When you confirm hotels, tours, or VIP access, they appear here as polished cards. Create the first arrangement to delight your clients.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setIsNewEventModalOpen(true)}
-                    className="mt-8 inline-flex items-center gap-2 px-6 py-3 bg-emerald-500 text-white rounded-2xl font-bold text-sm shadow-lg shadow-emerald-500/20 interactive-tap transition-all duration-300"
-                  >
-                    <Plus size={18} />
-                    New Arrangement
-                  </button>
-                </div>
-              ) : (
-              events.map((event) => {
-                const client = clients.find(c => c.id === event.clientId);
-                const config = EVENT_CATEGORY_CONFIG[event.category];
-                const CategoryIcon = config.icon;
-
-                return (
-                  <motion.div
-                    key={event.id}
-                    whileHover={{ y: -5 }}
-                    className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 hover:shadow-xl hover:shadow-slate-200/50 transition-all group"
-                  >
-                    <div className="flex items-start justify-between mb-6">
-                      <div className={`p-3 rounded-2xl ${config.color}`}>
-                        <CategoryIcon size={24} />
-                      </div>
-                      <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${
-                        event.status === 'CONFIRMED' ? 'bg-emerald-50 text-emerald-600' : 
-                        event.status === 'COMPLETED' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-600'
-                      }`}>
-                        {event.status}
-                      </div>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Client</p>
-                        <p className="text-sm font-bold text-slate-900">{client?.name}</p>
-                      </div>
-
-                      <div>
-                        <h4 className="text-lg font-bold text-slate-900 group-hover:text-active-green transition-colors">{event.title}</h4>
-                        <div className="flex items-center gap-2 text-slate-500 text-xs mt-2">
-                          <Calendar size={14} />
-                          {new Date(event.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {new Date(event.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        </div>
-                      </div>
-
-                      <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
-                        <span className={`text-[10px] font-bold uppercase tracking-widest ${config.color.split(' ')[1]}`}>
-                          {config.label}
-                        </span>
-                        <button className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all">
-                          <ChevronRight size={18} />
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* New Arrangement Modal */}
-      <AnimatePresence>
-        {isNewEventModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsNewEventModalOpen(false)}
-              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-lg bg-white rounded-[32px] shadow-2xl overflow-hidden"
-            >
-              <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
-                <div>
-                  <h3 className="text-2xl font-bold text-slate-900 tracking-tight">New Arrangement</h3>
-                  <p className="text-sm text-slate-500 mt-1">Create a bespoke luxury booking.</p>
-                </div>
-                <button 
-                  onClick={() => setIsNewEventModalOpen(false)}
-                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-white rounded-xl transition-all"
+            {events.length === 0 ? (
+              <div className="glass-panel rounded-3xl p-14 md:p-16 text-center border border-white/25">
+                <Star className="mx-auto text-emerald-500/70 mb-5" size={40} strokeWidth={1.25} />
+                <h3 className="text-xl font-bold text-slate-900">No luxury arrangements yet</h3>
+                <p className="text-slate-500 mt-3 max-w-lg mx-auto text-sm font-medium leading-relaxed">
+                  When you confirm hotels, tours, flights, or VIP access, they appear here by pipeline stage. Create the first arrangement to delight your clients.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsNewArrangementDrawerOpen(true)}
+                  className="mt-8 inline-flex items-center gap-2 px-6 py-3 bg-emerald-500 text-white rounded-2xl font-bold text-sm shadow-lg shadow-emerald-500/25 interactive-tap transition-all duration-300 hover:bg-emerald-600"
                 >
-                  <X size={20} />
+                  <Plus size={18} />
+                  New Arrangement
                 </button>
               </div>
+            ) : (
+              <div className="space-y-10">
+                {ARRANGEMENT_STATUS_PIPELINE.map(({ status, label }) => {
+                  const inStage = events.filter((e) => e.status === status);
+                  return (
+                    <section key={status} className="space-y-4">
+                      <div className="flex items-center justify-between gap-3 px-1">
+                        <h4 className="text-xs font-black uppercase tracking-widest text-emerald-600">
+                          {label}
+                        </h4>
+                        <span className="text-[10px] font-bold text-slate-500">{inStage.length} active</span>
+                      </div>
+                      {inStage.length === 0 ? (
+                        <div className="glass-panel rounded-2xl border border-dashed border-white/35 py-10 px-4 text-center">
+                          <p className="text-xs font-medium text-slate-500">No arrangements in this stage.</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {inStage.map((event) => {
+                            const client = clients.find((c) => c.id === event.clientId);
+                            const config = EVENT_CATEGORY_CONFIG[event.category] ?? EVENT_CATEGORY_CONFIG.TOUR;
+                            const CategoryIcon = config.icon;
+                            const staffName = event.assignedStaffId
+                              ? staffByUserId.get(event.assignedStaffId)
+                              : undefined;
+                            const initials = staffInitialsFromName(staffName);
 
-              <form className="p-8 space-y-6" onSubmit={handleCreateArrangement}>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Client</label>
-                    <GlassSelect
-                      name="clientId"
-                      value={arrangementClientId}
-                      onChange={setArrangementClientId}
-                      placeholder="Select a client"
-                      options={[
-                        ...clients.map((c) => ({ value: c.id, label: c.name })),
-                      ]}
-                    />
-                  </div>
+                            return (
+                              <motion.div
+                                key={event.id}
+                                whileHover={{ y: -4 }}
+                                className="glass-panel rounded-2xl p-5 border border-white/25 shadow-lg transition-all group"
+                              >
+                                <div className="flex items-start justify-between gap-3 mb-4">
+                                  <div className={`p-3 rounded-xl ${config.color}`}>
+                                    <CategoryIcon size={22} />
+                                  </div>
+                                  <span
+                                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${EVENT_STATUS_PILL_CLASS[event.status]}`}
+                                  >
+                                    {EVENT_STATUS_SELECT_OPTIONS.find((o) => o.value === event.status)?.label ??
+                                      event.status.replace(/_/g, ' ')}
+                                  </span>
+                                </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Arrangement Title</label>
-                    <input 
-                      name="title"
-                      type="text" 
-                      required
-                      placeholder="e.g. Private Desert Dinner"
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-active-green/20 transition-all outline-none"
-                    />
-                  </div>
+                                <div className="space-y-3">
+                                  <div>
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+                                      Client
+                                    </p>
+                                    <p className="text-sm font-bold text-slate-900">{client?.name ?? '—'}</p>
+                                  </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Category</label>
-                      <GlassSelect<EventCategory>
-                        name="category"
-                        value={arrangementCategory}
-                        onChange={setArrangementCategory}
-                        options={[
-                          { value: 'HOTEL', label: 'Hotel' },
-                          { value: 'TOUR', label: 'Tour' },
-                          { value: 'TRANSFER', label: 'Transfer' },
-                          { value: 'VIP_ACCESS', label: 'VIP Access' },
-                        ]}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Start Date</label>
-                      <input 
-                        name="startDate"
-                        type="date" 
-                        required
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-active-green/20 transition-all outline-none"
-                      />
-                    </div>
-                  </div>
+                                  <div>
+                                    <h4 className="text-base font-bold text-slate-900 group-hover:text-emerald-600 transition-colors">
+                                      {event.title}
+                                    </h4>
+                                    <div className="flex items-center gap-2 text-slate-600 text-xs mt-2 font-medium">
+                                      <Calendar size={14} className="text-emerald-600/80 shrink-0" />
+                                      {new Date(event.startDate).toLocaleDateString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                      })}{' '}
+                                      –{' '}
+                                      {new Date(event.endDate).toLocaleDateString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        year: 'numeric',
+                                      })}
+                                    </div>
+                                  </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">End Date</label>
-                    <input 
-                      name="endDate"
-                      type="date" 
-                      required
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-active-green/20 transition-all outline-none"
-                    />
-                  </div>
-                </div>
+                                  <div className="flex flex-wrap items-center gap-2 pt-2">
+                                    <span
+                                      className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-lg ${config.color}`}
+                                    >
+                                      {config.label}
+                                    </span>
+                                    {event.assignedStaffId && (
+                                      <span
+                                        className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-700 ring-1 ring-emerald-500/25"
+                                        title={staffName ?? 'Staff'}
+                                      >
+                                        {initials}
+                                      </span>
+                                    )}
+                                  </div>
 
-                <div className="pt-4 flex gap-3">
-                  <button 
-                    type="button"
-                    onClick={() => setIsNewEventModalOpen(false)}
-                    className="flex-1 py-4 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit"
-                    className="flex-1 py-4 bg-active-green text-white rounded-2xl font-bold text-sm shadow-lg shadow-active-green/20 hover:bg-active-green/90 transition-all"
-                  >
-                    Create Arrangement
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
+                                  <div className="pt-3 border-t border-white/20">
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                                      Move to
+                                    </label>
+                                    <GlassSelect<EventStatus>
+                                      value={event.status}
+                                      onChange={(s) => void updateEventStatus(event.id, s)}
+                                      options={EVENT_STATUS_SELECT_OPTIONS}
+                                    />
+                                  </div>
+                                </div>
+                              </motion.div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -831,6 +763,14 @@ export const VisaEventsView: React.FC = () => {
         clients={clients}
         staffOptions={staffOptions}
         addVisa={addVisa}
+      />
+
+      <NewArrangementDrawer
+        isOpen={isNewArrangementDrawerOpen}
+        onClose={() => setIsNewArrangementDrawerOpen(false)}
+        clients={clients}
+        staffOptions={staffOptions}
+        addEvent={addEvent}
       />
     </div>
   );

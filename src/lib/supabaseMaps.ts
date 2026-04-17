@@ -1,4 +1,11 @@
-import type { Client, FrequentFlyerNumber, Invoice, InvoiceItem, VisaApplication } from '../types';
+import type {
+  Client,
+  EventBooking,
+  FrequentFlyerNumber,
+  Invoice,
+  InvoiceItem,
+  VisaApplication,
+} from '../types';
 import type { CashLogEntry } from '../types';
 
 /** DB row shapes (public schema) — keep in sync with supabase/migrations. */
@@ -196,6 +203,46 @@ export function visaToInsert(v: VisaApplication): VisaRow {
     external_tracking_id: v.externalTrackingId ?? null,
     processing_center: v.processingCenter ?? null,
     expected_approval_date: v.expectedApprovalDate ?? null,
+  };
+}
+
+export interface ConciergeArrangementRow {
+  id: string;
+  client_id: string;
+  assigned_staff_id: string | null;
+  title: string;
+  category: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export function arrangementFromRow(r: ConciergeArrangementRow): EventBooking {
+  return {
+    id: r.id,
+    clientId: r.client_id,
+    assignedStaffId: r.assigned_staff_id ?? undefined,
+    title: r.title,
+    category: r.category as EventBooking['category'],
+    startDate: r.start_date,
+    endDate: r.end_date,
+    status: r.status as EventBooking['status'],
+  };
+}
+
+/** Payload for insert/update (excludes DB-managed timestamps on insert). */
+export function arrangementToInsert(e: EventBooking): Omit<ConciergeArrangementRow, 'created_at' | 'updated_at'> {
+  return {
+    id: e.id,
+    client_id: e.clientId,
+    assigned_staff_id: e.assignedStaffId ?? null,
+    title: e.title,
+    category: e.category,
+    start_date: e.startDate,
+    end_date: e.endDate,
+    status: e.status,
   };
 }
 

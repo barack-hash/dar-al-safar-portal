@@ -256,8 +256,13 @@ export interface VisaApplication {
   expectedApprovalDate?: string;
 }
 
-export type EventCategory = 'HOTEL' | 'TOUR' | 'TRANSFER' | 'VIP_ACCESS';
-export type EventStatus = 'PLANNING' | 'CONFIRMED' | 'COMPLETED';
+export type EventCategory = 'HOTEL' | 'TOUR' | 'TRANSFER' | 'FLIGHT' | 'VIP_ACCESS';
+export type EventStatus =
+  | 'PLANNING'
+  | 'AWAITING_PAYMENT'
+  | 'CONFIRMED'
+  | 'COMPLETED'
+  | 'CANCELLED';
 
 export interface EventBooking {
   id: string;
@@ -267,6 +272,8 @@ export interface EventBooking {
   startDate: string;
   endDate: string;
   status: EventStatus;
+  /** profiles.user_id of assigned staff */
+  assignedStaffId?: string;
 }
 
 export type PaymentFrequency = 'HOURLY' | 'BI_WEEKLY' | 'MONTHLY';

@@ -126,8 +126,8 @@ interface ClientsContextType {
   updateVisa: (id: string, updates: Partial<VisaApplication>) => void;
   updateVisaStatus: (id: string, status: VisaStatus) => void;
   updateVisaDocument: (visaId: string, docId: string, status: VisaDocumentStatus, verifiedAt?: string, verifiedBy?: string) => void;
-  addEvent: (event: Omit<EventBooking, 'id'>) => EventBooking;
-  updateEventStatus: (id: string, status: EventStatus) => void;
+  addEvent: (event: Omit<EventBooking, 'id'>) => Promise<EventBooking>;
+  updateEventStatus: (id: string, status: EventStatus) => Promise<void>;
   urgentVisas: VisaApplication[];
   cashLog: CashLogEntry[];
   addCashLogEntry: (entry: Omit<CashLogEntry, 'id'>) => Promise<CashLogEntry>;

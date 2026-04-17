@@ -1,9 +1,10 @@
 import { useMemo, useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useLocalStorage } from './useLocalStorage';
-import { VisaApplication, EventBooking, VisaStatus, EventStatus, VisaDocumentStatus } from '../types';
+import { VisaApplication, VisaStatus, VisaDocumentStatus } from '../types';
 import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { visaFromRow, visaToInsert, type VisaRow } from '../lib/supabaseMaps';
+import { useConciergeArrangements } from './useConciergeArrangements';
 
 function migrateLegacyVisaStatus(status: string): VisaStatus {
   const map: Record<string, VisaStatus> = {
@@ -71,26 +72,7 @@ export function useConcierge() {
   const visasRaw = supabaseMode ? visasRemote : visasLocal;
   const visas = useMemo(() => visasRaw.map(normalizeVisa), [visasRaw]);
 
-  const [events, setEvents] = useLocalStorage<EventBooking[]>('darsafar_events', [
-    {
-      id: 'e1',
-      clientId: '1',
-      title: 'Lalibela Private Tour',
-      category: 'TOUR',
-      startDate: '2026-04-15',
-      endDate: '2026-04-16',
-      status: 'CONFIRMED',
-    },
-    {
-      id: 'e2',
-      clientId: '2',
-      title: 'Four Seasons Paris',
-      category: 'HOTEL',
-      startDate: '2026-04-10',
-      endDate: '2026-04-14',
-      status: 'PLANNING',
-    },
-  ]);
+  const { events, addEvent, updateEventStatus } = useConciergeArrangements();
 
   useEffect(() => {
     if (!supabaseMode) return;
@@ -215,22 +197,6 @@ export function useConcierge() {
       }
     },
     [supabaseMode, visas, setVisasLocal]
-  );
-
-  const addEvent = useCallback((event: Omit<EventBooking, 'id'>) => {
-    const newEvent: EventBooking = {
-      ...event,
-      id: Math.random().toString(36).substring(2, 11),
-    };
-    setEvents((prev) => [...prev, newEvent]);
-    return newEvent;
-  }, [setEvents]);
-
-  const updateEventStatus = useCallback(
-    (id: string, status: EventStatus) => {
-      setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, status } : e)));
-    },
-    [setEvents]
   );
 
   const urgentVisas = useMemo(() => {
