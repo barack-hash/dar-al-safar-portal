@@ -180,7 +180,7 @@ export interface Transaction {
 
 export type EmployeeRole = 'Concierge' | 'Travel Consultant' | 'Operations Manager' | 'Accountant' | 'Marketing Specialist';
 
-export type TicketStatus = 'DRAFT' | 'ON_HOLD' | 'TICKETED' | 'CANCELLED' | 'REFUNDED';
+export type TicketStatus = 'ON_HOLD' | 'TICKETED' | 'VOIDED' | 'CANCELLED';
 
 export type CabinClass = 'Economy' | 'Cloud Nine/Business' | 'First';
 
@@ -203,6 +203,13 @@ export interface BookingRecord {
   id: string;
   pnr: string;
   clientId: string;
+  airlineCode: string;
+  ticketNumber?: string;
+  /** profiles.user_id of assigned staff */
+  assignedStaffId?: string;
+  itinerarySummary: string;
+  departureDate: string;
+  arrivalDate: string;
   itinerary: FlightSegment[];
   status: TicketStatus;
   ticketingTimeLimit: string;

@@ -1,6 +1,9 @@
 import type {
+  BookingRecord,
   Client,
+  Currency,
   EventBooking,
+  FlightSegment,
   FrequentFlyerNumber,
   Invoice,
   InvoiceItem,
@@ -243,6 +246,93 @@ export function arrangementToInsert(e: EventBooking): Omit<ConciergeArrangementR
     start_date: e.startDate,
     end_date: e.endDate,
     status: e.status,
+  };
+}
+
+export interface TicketingBookingRow {
+  id: string;
+  client_id: string;
+  assigned_staff_id: string | null;
+  pnr_code: string;
+  airline_code: string;
+  ticket_number: string | null;
+  itinerary_summary: string;
+  departure_date: string;
+  arrival_date: string;
+  time_to_limit: string;
+  status: string;
+  pricing: unknown;
+  itinerary: unknown;
+  /** Present after migration 20260422120000_ticketing_bookings_issued_at.sql */
+  issued_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+function parseTicketingPricing(raw: unknown): BookingRecord['pricing'] {
+  if (!raw || typeof raw !== 'object') {
+    return { netFare: 0, taxes: 0, markup: 0, grossTotal: 0, currency: 'USD' };
+  }
+  const o = raw as Record<string, unknown>;
+  const cur = String(o.currency ?? 'USD');
+  const currency = (['USD', 'SAR', 'ETB'].includes(cur) ? cur : 'USD') as Currency;
+  return {
+    netFare: Number(o.netFare) || 0,
+    taxes: Number(o.taxes) || 0,
+    markup: Number(o.markup) || 0,
+    grossTotal: Number(o.grossTotal) || 0,
+    currency,
+  };
+}
+
+function parseTicketingItinerary(raw: unknown): FlightSegment[] {
+  if (!Array.isArray(raw)) return [];
+  return raw as FlightSegment[];
+}
+
+export function bookingFromRow(r: TicketingBookingRow): BookingRecord {
+  const itinerary = parseTicketingItinerary(r.itinerary);
+  const first = itinerary[0];
+  const last = itinerary[itinerary.length - 1] ?? first;
+  const summary =
+    r.itinerary_summary?.trim() ||
+    (first && last ? `${first.departure.airportCode} -> ${last.arrival.airportCode}` : '—');
+  return {
+    id: r.id,
+    pnr: r.pnr_code,
+    clientId: r.client_id,
+    airlineCode: r.airline_code,
+    ticketNumber: r.ticket_number ?? undefined,
+    assignedStaffId: r.assigned_staff_id ?? undefined,
+    itinerarySummary: summary,
+    departureDate: r.departure_date,
+    arrivalDate: r.arrival_date,
+    itinerary,
+    status: r.status as BookingRecord['status'],
+    ticketingTimeLimit: r.time_to_limit,
+    pricing: parseTicketingPricing(r.pricing),
+    issuedAt: r.issued_at ?? undefined,
+  };
+}
+
+/** Insert / full-row replace — omit issued_at so DBs without that column still accept inserts. */
+export function bookingToInsert(
+  b: BookingRecord
+): Omit<TicketingBookingRow, 'created_at' | 'updated_at' | 'issued_at'> {
+  return {
+    id: b.id,
+    client_id: b.clientId,
+    assigned_staff_id: b.assignedStaffId ?? null,
+    pnr_code: b.pnr,
+    airline_code: b.airlineCode,
+    ticket_number: b.ticketNumber ?? null,
+    itinerary_summary: b.itinerarySummary,
+    departure_date: b.departureDate,
+    arrival_date: b.arrivalDate,
+    time_to_limit: b.ticketingTimeLimit,
+    status: b.status,
+    pricing: b.pricing,
+    itinerary: b.itinerary,
   };
 }
 

@@ -111,9 +111,9 @@ interface ClientsContextType {
     transactions: Transaction[];
   };
   bookings: BookingRecord[];
-  createBooking: (booking: Omit<BookingRecord, 'id'>) => BookingRecord;
-  issueTicket: (id: string) => void;
-  cancelBooking: (id: string) => void;
+  createBooking: (booking: Omit<BookingRecord, 'id'>) => Promise<BookingRecord>;
+  issueTicket: (id: string, payload: { ticketNumber: string }) => Promise<void>;
+  cancelBooking: (id: string) => Promise<void>;
   expiringHolds: BookingRecord[];
   ticketingStats: {
     activeHolds: number;
@@ -298,50 +298,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   } = useConcierge();
   const { cashLog, addCashLogEntry, updateCashLogEntry, deleteCashLogEntry } = useCashLog();
 
-  const issueTicket = useCallback((id: string) => {
-    const booking = bookings.find(b => b.id === id);
-    if (!booking) return;
+  const issueTicket = useCallback(
+    async (id: string, payload: { ticketNumber: string }) => {
+      const booking = bookings.find((b) => b.id === id);
+      if (!booking) return;
+      const ticketNumber = payload.ticketNumber.trim();
+      if (!ticketNumber) {
+        toast.error('Ticket number is required');
+        return;
+      }
+      try {
+        await originalIssueTicket(id, { ticketNumber });
+      } catch {
+        return;
+      }
 
-    originalIssueTicket(id);
-
-    // Financial Sync: Record the markup as income
-    addTransaction({
-      date: new Date().toISOString().split('T')[0],
-      description: `Ticket Issued: PNR ${booking.pnr}`,
-      amount: booking.pricing.markup,
-      currency: booking.pricing.currency,
-      type: 'INCOME',
-      category: 'Flight Sales Markup',
-      isTaxable: true
-    });
-
-    toast.success('Ticket Issued', {
-      description: 'Markup recorded in Accounting Ledger.'
-    });
-  }, [bookings, originalIssueTicket, addTransaction]);
-
-  const cancelBooking = useCallback((id: string) => {
-    const booking = bookings.find(b => b.id === id);
-    if (!booking) return;
-
-    if (booking.status === 'TICKETED') {
-      // Financial Sync: Create a negative entry in the General Ledger
       addTransaction({
         date: new Date().toISOString().split('T')[0],
-        description: `Booking Cancellation Refund: PNR ${booking.pnr}`,
-        amount: booking.pricing.markup, // Reversing the markup
+        description: `Ticket Issued: PNR ${booking.pnr} #${ticketNumber}`,
+        amount: booking.pricing.markup,
         currency: booking.pricing.currency,
-        type: 'EXPENSE',
-        category: 'Refunds/Cancellations',
-        isTaxable: false
+        type: 'INCOME',
+        category: 'Flight Sales Markup',
+        isTaxable: true,
       });
-    }
 
-    originalCancelBooking(id);
-    toast.success('Booking Cancelled', {
-      description: 'Accounting Ledger automatically updated.'
-    });
-  }, [bookings, originalCancelBooking, addTransaction]);
+      toast.success('Ticket Issued', {
+        description: 'Markup recorded in Accounting Ledger.',
+      });
+    },
+    [bookings, originalIssueTicket, addTransaction]
+  );
+
+  const cancelBooking = useCallback(
+    async (id: string) => {
+      const booking = bookings.find((b) => b.id === id);
+      if (!booking) return;
+
+      if (booking.status === 'TICKETED') {
+        addTransaction({
+          date: new Date().toISOString().split('T')[0],
+          description: `Booking Cancellation Refund: PNR ${booking.pnr}`,
+          amount: booking.pricing.markup,
+          currency: booking.pricing.currency,
+          type: 'EXPENSE',
+          category: 'Refunds/Cancellations',
+          isTaxable: false,
+        });
+      }
+
+      await originalCancelBooking(id);
+      toast.success('Booking Cancelled', {
+        description: 'Accounting Ledger automatically updated.',
+      });
+    },
+    [bookings, originalCancelBooking, addTransaction]
+  );
 
   const voidTransaction = useCallback((id: string) => {
     const transaction = transactions.find(t => t.id === id);

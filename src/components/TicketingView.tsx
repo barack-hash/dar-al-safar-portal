@@ -1,452 +1,31 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { 
-  Plane, 
-  Clock, 
-  CheckCircle2, 
-  AlertCircle, 
-  Search, 
-  Filter, 
-  Download, 
+import {
+  Plane,
+  Clock,
+  CheckCircle2,
+  Search,
+  Filter,
+  Download,
   Plus,
   MoreHorizontal,
   ArrowRight,
   ShieldCheck,
-  Calendar,
   X,
-  ChevronRight,
-  ChevronLeft,
   Trash2,
   User,
   Printer,
   FileText,
   MapPin,
-  Briefcase
+  Briefcase,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useClientsContext, useUI } from '../contexts/AppContext';
 import { BookingRecord, TicketStatus, FlightSegment, CabinClass, Currency } from '../types';
 import { toast } from 'sonner';
-
-interface NewBookingModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-}
-
-const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose }) => {
-  const { clients, createBooking } = useClientsContext();
-  const { currency } = useUI();
-  const [step, setStep] = useState(1);
-  
-  const [formData, setFormData] = useState<{
-    clientId: string;
-    itinerary: FlightSegment[];
-    pricing: {
-      netFare: number;
-      markup: number;
-      currency: any;
-    };
-    ticketingTimeLimit: string;
-  }>({
-    clientId: '',
-    itinerary: [{
-      id: crypto.randomUUID(),
-      flightNumber: '',
-      airline: '',
-      departure: { airportCode: '', at: '' },
-      arrival: { airportCode: '', at: '' },
-      cabinClass: 'Economy'
-    }],
-    pricing: {
-      netFare: 0,
-      markup: 10,
-      currency: currency
-    },
-    ticketingTimeLimit: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString().split('T')[0]
-  });
-
-  const selectedClient = clients.find(c => c.id === formData.clientId);
-  const grossTotal = formData.pricing.netFare * (1 + formData.pricing.markup / 100);
-
-  const handleAddSegment = () => {
-    setFormData(prev => ({
-      ...prev,
-      itinerary: [...prev.itinerary, {
-        id: crypto.randomUUID(),
-        flightNumber: '',
-        airline: '',
-        departure: { airportCode: '', at: '' },
-        arrival: { airportCode: '', at: '' },
-        cabinClass: 'Economy'
-      }]
-    }));
-  };
-
-  const handleRemoveSegment = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      itinerary: prev.itinerary.filter((_, i) => i !== index)
-    }));
-  };
-
-  const handleUpdateSegment = (index: number, field: string, value: any) => {
-    const newItinerary = [...formData.itinerary];
-    const segment = { ...newItinerary[index] };
-    
-    if (field.includes('.')) {
-      const [parent, child] = field.split('.');
-      (segment as any)[parent] = { ...(segment as any)[parent], [child]: value };
-    } else {
-      (segment as any)[field] = value;
-    }
-    
-    newItinerary[index] = segment;
-    setFormData(prev => ({ ...prev, itinerary: newItinerary }));
-  };
-
-  const handleSave = () => {
-    if (!formData.clientId) {
-      toast.error('Please select a passenger');
-      return;
-    }
-    if (formData.itinerary.some(s => !s.flightNumber || !s.departure.airportCode || !s.arrival.airportCode)) {
-      toast.error('Please complete all flight segments');
-      return;
-    }
-
-    const pnr = Math.random().toString(36).substring(2, 8).toUpperCase();
-    
-    createBooking({
-      pnr,
-      clientId: formData.clientId,
-      itinerary: formData.itinerary,
-      status: 'ON_HOLD',
-      ticketingTimeLimit: new Date(formData.ticketingTimeLimit).toISOString(),
-      pricing: {
-        netFare: formData.pricing.netFare,
-        taxes: formData.pricing.netFare * 0.15, // Mock taxes
-        markup: formData.pricing.netFare * (formData.pricing.markup / 100),
-        grossTotal: grossTotal + (formData.pricing.netFare * 0.15),
-        currency: formData.pricing.currency
-      }
-    });
-
-    toast.success(`PNR ${pnr} created successfully`);
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8">
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={onClose}
-          className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
-        />
-        
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="relative w-full max-w-6xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col md:flex-row h-[85vh]"
-        >
-          {/* Left Side: Data Entry */}
-          <div className="flex-1 flex flex-col border-r border-slate-100 overflow-hidden">
-            <div className="p-8 border-b border-slate-50 flex items-center justify-between">
-              <div>
-                <h3 className="text-2xl font-bold text-slate-900">New GDS Booking</h3>
-                <div className="flex items-center gap-2 mt-1">
-                  {[1, 2, 3].map(i => (
-                    <div 
-                      key={i} 
-                      className={`h-1.5 rounded-full transition-all ${
-                        step === i ? 'w-8 bg-active-green' : 'w-4 bg-slate-100'
-                      }`} 
-                    />
-                  ))}
-                </div>
-              </div>
-              <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-all">
-                <X size={24} className="text-slate-400" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-              {step === 1 && (
-                <motion.div 
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="space-y-6"
-                >
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Select Passenger</label>
-                    <div className="relative">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                      <select 
-                        value={formData.clientId}
-                        onChange={(e) => setFormData(prev => ({ ...prev, clientId: e.target.value }))}
-                        className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-active-green/20 appearance-none"
-                      >
-                        <option value="">Search clients...</option>
-                        {clients.map(client => (
-                          <option key={client.id} value={client.id}>{client.name} ({client.email})</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  
-                  {selectedClient && (
-                    <div className="p-6 bg-active-green/5 rounded-3xl border border-active-green/10 flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-active-green text-white flex items-center justify-center font-bold text-lg">
-                        {selectedClient.name[0]}
-                      </div>
-                      <div>
-                        <p className="font-bold text-slate-900">{selectedClient.name}</p>
-                        <p className="text-xs text-slate-500">{selectedClient.email}</p>
-                      </div>
-                    </div>
-                  )}
-                </motion.div>
-              )}
-
-              {step === 2 && (
-                <motion.div 
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="space-y-8"
-                >
-                  {formData.itinerary.map((segment, index) => (
-                    <div key={segment.id} className="p-6 bg-slate-50 rounded-[2rem] relative group/segment">
-                      <div className="flex items-center justify-between mb-6">
-                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Segment {index + 1}</h4>
-                        {formData.itinerary.length > 1 && (
-                          <button 
-                            onClick={() => handleRemoveSegment(index)}
-                            className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        )}
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Airline</label>
-                          <input 
-                            type="text" 
-                            placeholder="e.g. Ethiopian Airlines"
-                            value={segment.airline}
-                            onChange={(e) => handleUpdateSegment(index, 'airline', e.target.value)}
-                            className="w-full px-4 py-3 bg-white border-none rounded-xl text-sm focus:ring-2 focus:ring-active-green/20"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Flight No.</label>
-                          <input 
-                            type="text" 
-                            placeholder="e.g. ET704"
-                            value={segment.flightNumber}
-                            onChange={(e) => handleUpdateSegment(index, 'flightNumber', e.target.value)}
-                            className="w-full px-4 py-3 bg-white border-none rounded-xl text-sm focus:ring-2 focus:ring-active-green/20"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Departure (Code)</label>
-                          <input 
-                            type="text" 
-                            placeholder="ADD"
-                            value={segment.departure.airportCode}
-                            onChange={(e) => handleUpdateSegment(index, 'departure.airportCode', e.target.value.toUpperCase())}
-                            className="w-full px-4 py-3 bg-white border-none rounded-xl text-sm focus:ring-2 focus:ring-active-green/20"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Arrival (Code)</label>
-                          <input 
-                            type="text" 
-                            placeholder="CDG"
-                            value={segment.arrival.airportCode}
-                            onChange={(e) => handleUpdateSegment(index, 'arrival.airportCode', e.target.value.toUpperCase())}
-                            className="w-full px-4 py-3 bg-white border-none rounded-xl text-sm focus:ring-2 focus:ring-active-green/20"
-                          />
-                        </div>
-                        <div className="col-span-2 space-y-2">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Departure Date/Time</label>
-                          <input 
-                            type="datetime-local" 
-                            value={segment.departure.at}
-                            onChange={(e) => handleUpdateSegment(index, 'departure.at', e.target.value)}
-                            className="w-full px-4 py-3 bg-white border-none rounded-xl text-sm focus:ring-2 focus:ring-active-green/20"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  
-                  <button 
-                    onClick={handleAddSegment}
-                    className="w-full py-4 border-2 border-dashed border-slate-200 rounded-[2rem] text-slate-400 hover:border-active-green hover:text-active-green transition-all flex items-center justify-center gap-2 font-bold text-sm"
-                  >
-                    <Plus size={18} />
-                    Add Flight Segment
-                  </button>
-                </motion.div>
-              )}
-
-              {step === 3 && (
-                <motion.div 
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="space-y-8"
-                >
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Net Fare (Cost)</label>
-                      <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
-                        <input 
-                          type="number" 
-                          value={formData.pricing.netFare}
-                          onChange={(e) => setFormData(prev => ({ ...prev, pricing: { ...prev.pricing, netFare: Number(e.target.value) } }))}
-                          className="w-full pl-8 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-active-green/20"
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">DASA Markup (%)</label>
-                      <div className="relative">
-                        <input 
-                          type="number" 
-                          value={formData.pricing.markup}
-                          onChange={(e) => setFormData(prev => ({ ...prev, pricing: { ...prev.pricing, markup: Number(e.target.value) } }))}
-                          className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-active-green/20 text-right"
-                        />
-                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ticketing Time Limit (TTL)</label>
-                    <div className="relative">
-                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                      <input 
-                        type="date" 
-                        value={formData.ticketingTimeLimit}
-                        onChange={(e) => setFormData(prev => ({ ...prev, ticketingTimeLimit: e.target.value }))}
-                        className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-active-green/20"
-                      />
-                    </div>
-                    {formData.ticketingTimeLimit === new Date().toISOString().split('T')[0] && (
-                      <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1 mt-2">
-                        <AlertCircle size={12} />
-                        Urgent: TTL set for today
-                      </p>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </div>
-
-            <div className="p-8 border-t border-slate-50 flex items-center justify-between">
-              <button 
-                onClick={() => setStep(s => Math.max(1, s - 1))}
-                disabled={step === 1}
-                className="flex items-center gap-2 px-6 py-3 text-slate-500 font-bold hover:text-slate-900 transition-all disabled:opacity-0"
-              >
-                <ChevronLeft size={20} />
-                Back
-              </button>
-              
-              {step < 3 ? (
-                <button 
-                  onClick={() => setStep(s => Math.min(3, s + 1))}
-                  className="flex items-center gap-2 px-8 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all active:scale-95"
-                >
-                  Continue
-                  <ChevronRight size={20} />
-                </button>
-              ) : (
-                <button 
-                  onClick={handleSave}
-                  className="flex items-center gap-2 px-10 py-3 bg-active-green text-white rounded-2xl font-bold shadow-lg shadow-active-green/20 hover:bg-active-green/90 transition-all active:scale-95"
-                >
-                  Create PNR
-                  <CheckCircle2 size={20} />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Right Side: Ticket Preview */}
-          <div className="w-full md:w-[400px] bg-slate-900 p-8 flex flex-col">
-            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-8">Live GDS Preview</h4>
-            
-            <div className="flex-1 space-y-6">
-              <div className="bg-white/5 rounded-3xl p-6 border border-white/10 backdrop-blur-sm">
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Passenger</p>
-                    <p className="text-lg font-bold text-white mt-1">{selectedClient?.name || '---'}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">PNR Status</p>
-                    <p className="text-xs font-bold text-amber-500 mt-1">HOLDING</p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  {formData.itinerary.map((seg) => (
-                    <div key={seg.id} className="flex items-center justify-between py-3 border-t border-white/5 first:border-0">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
-                          <Plane size={14} className="text-white" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-white">{seg.departure.airportCode || '---'} → {seg.arrival.airportCode || '---'}</p>
-                          <p className="text-[10px] text-slate-500">{seg.airline || '---'}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs font-bold text-white">{seg.flightNumber || '---'}</p>
-                        <p className="text-[10px] text-slate-500">{seg.departure.at ? new Date(seg.departure.at).toLocaleDateString() : '---'}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-active-green/10 rounded-3xl p-6 border border-active-green/20">
-                <div className="flex justify-between items-center mb-4">
-                  <p className="text-xs font-bold text-slate-400">Net Fare</p>
-                  <p className="text-sm font-bold text-white">${formData.pricing.netFare.toLocaleString()}</p>
-                </div>
-                <div className="flex justify-between items-center mb-4">
-                  <p className="text-xs font-bold text-slate-400">Markup ({formData.pricing.markup}%)</p>
-                  <p className="text-sm font-bold text-active-green">+${(formData.pricing.netFare * (formData.pricing.markup / 100)).toLocaleString()}</p>
-                </div>
-                <div className="pt-4 border-t border-white/10 flex justify-between items-center">
-                  <p className="text-sm font-bold text-white">Total Quote</p>
-                  <p className="text-xl font-black text-active-green">${grossTotal.toLocaleString()}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-8 flex items-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/5">
-              <ShieldCheck size={20} className="text-active-green" />
-              <p className="text-[10px] text-slate-400 leading-tight">
-                Enterprise-grade encryption active. This booking will be held in the GDS queue until TTL expiration.
-              </p>
-            </div>
-          </div>
-        </motion.div>
-      </div>
-    </AnimatePresence>
-  );
-};
+import { getHoldUrgency, formatHoldCountdown } from '../lib/pnrHoldTtl';
+import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import type { StaffOption } from './visa/NewVisaApplicationDrawer';
+import { NewGDSBookingDrawer } from './ticketing/NewGDSBookingDrawer';
 
 interface ETicketModalProps {
   isOpen: boolean;
@@ -548,7 +127,7 @@ const ETicketModal: React.FC<ETicketModalProps> = ({ isOpen, onClose, booking, c
                     <FileText size={18} className="text-slate-400" />
                     <div>
                       <p className="text-xs text-slate-500">Ticket Number</p>
-                      <p className="font-bold text-slate-900 font-mono">ET-{(Math.random() * 1000000000000).toFixed(0)}</p>
+                      <p className="font-bold text-slate-900 font-mono">{booking.ticketNumber ?? '—'}</p>
                     </div>
                   </div>
                 </div>
@@ -675,13 +254,7 @@ const ETicketModal: React.FC<ETicketModalProps> = ({ isOpen, onClose, booking, c
 };
 
 export const TicketingView: React.FC = () => {
-  const { 
-    bookings, 
-    issueTicket, 
-    cancelBooking, 
-    ticketingStats,
-    clients 
-  } = useClientsContext();
+  const { bookings, issueTicket, cancelBooking, ticketingStats, clients, createBooking } = useClientsContext();
   const { currency, convertForDisplay, isAddBookingModalOpen, setIsAddBookingModalOpen } = useUI();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTicket, setSelectedTicket] = useState<BookingRecord | null>(null);
@@ -689,8 +262,48 @@ export const TicketingView: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<TicketStatus | 'ALL'>('ALL');
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+  const [tickNow, setTickNow] = useState(() => new Date());
+  const [issueForBooking, setIssueForBooking] = useState<BookingRecord | null>(null);
+  const [issueTicketNumber, setIssueTicketNumber] = useState('');
+  const [staffOptions, setStaffOptions] = useState<StaffOption[]>([]);
 
   const filterRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const t = window.setInterval(() => setTickNow(new Date()), 30_000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setStaffOptions([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const sb = getSupabase();
+        const { data, error } = await sb.from('profiles').select('user_id, full_name, email');
+        if (error) throw error;
+        if (cancelled || !data) return;
+        const opts: StaffOption[] = [];
+        for (const row of data as { user_id: string | null; full_name: string | null; email: string }[]) {
+          if (!row.user_id) continue;
+          opts.push({
+            userId: row.user_id,
+            name: (row.full_name?.trim() || row.email || 'Staff').trim(),
+          });
+        }
+        opts.sort((a, b) => a.name.localeCompare(b.name));
+        setStaffOptions(opts);
+      } catch {
+        if (!cancelled) setStaffOptions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -698,8 +311,6 @@ export const TicketingView: React.FC = () => {
         setIsFilterMenuOpen(false);
       }
       if (activeDropdownId) {
-        // We'll handle row dropdowns similarly or with a simple state reset
-        // For simplicity, clicking anywhere else closes all dropdowns
         if (!(event.target as HTMLElement).closest('.row-dropdown-trigger')) {
           setActiveDropdownId(null);
         }
@@ -711,65 +322,54 @@ export const TicketingView: React.FC = () => {
   }, [activeDropdownId]);
 
   const getClientName = (clientId: string) => {
-    return clients.find(c => c.id === clientId)?.name || 'Unknown Client';
+    return clients.find((c) => c.id === clientId)?.name || 'Unknown Client';
   };
 
   const getStatusColor = (status: TicketStatus) => {
     switch (status) {
-      case 'TICKETED': return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20';
-      case 'ON_HOLD': return 'bg-amber-500/10 text-amber-600 border-amber-500/20';
-      case 'CANCELLED': return 'bg-slate-100 text-slate-500 border-slate-200';
-      case 'REFUNDED': return 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20';
-      default: return 'bg-slate-500/10 text-slate-600 border-slate-500/20';
+      case 'TICKETED':
+        return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20';
+      case 'ON_HOLD':
+        return 'bg-amber-500/10 text-amber-600 border-amber-500/20';
+      case 'CANCELLED':
+        return 'bg-slate-100 text-slate-500 border-slate-200';
+      case 'VOIDED':
+        return 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20';
+      default:
+        return 'bg-slate-500/10 text-slate-600 border-slate-500/20';
     }
   };
 
-  const isToday = (dateString: string) => {
-    const date = new Date(dateString);
-    const today = new Date();
-    return date.getDate() === today.getDate() &&
-      date.getMonth() === today.getMonth() &&
-      date.getFullYear() === today.getFullYear();
-  };
-
-  const getTimeRemaining = (ttl: string) => {
-    const now = new Date();
-    const expiry = new Date(ttl);
-    const diff = expiry.getTime() - now.getTime();
-    
-    if (diff <= 0) return 'Expired';
-    
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    
-    if (hours > 24) return `${Math.floor(hours / 24)}d remaining`;
-    return `${hours}h ${minutes}m remaining`;
-  };
-
-  const filteredBookings = bookings.filter(b => {
-    const matchesSearch = b.pnr.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      getClientName(b.clientId).toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredBookings = bookings.filter((b) => {
+    const q = searchQuery.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      b.pnr.toLowerCase().includes(q) ||
+      b.airlineCode.toLowerCase().includes(q) ||
+      getClientName(b.clientId).toLowerCase().includes(q) ||
+      b.itinerarySummary.toLowerCase().includes(q);
     const matchesStatus = statusFilter === 'ALL' || b.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
   const exportTicketingCSV = () => {
     const headers = ['PNR', 'Client', 'Route', 'Status', 'Net Fare', 'Markup'];
-    const rows = filteredBookings.map(b => [
+    const rows = filteredBookings.map((b) => [
       b.pnr,
       getClientName(b.clientId),
-      `${b.itinerary[0]?.departure.airportCode} -> ${b.itinerary[b.itinerary.length - 1]?.arrival.airportCode}`,
+      b.itinerarySummary ||
+        `${b.itinerary[0]?.departure.airportCode} -> ${b.itinerary[b.itinerary.length - 1]?.arrival.airportCode}`,
       b.status,
       b.pricing.netFare,
-      b.pricing.markup
+      b.pricing.markup,
     ]);
 
-    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+    const csvContent = [headers, ...rows].map((e) => e.join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
+    const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `ticketing_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `ticketing_export_${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -778,28 +378,40 @@ export const TicketingView: React.FC = () => {
   };
 
   const stats = [
-    { 
-      label: 'Active Holds', 
-      value: ticketingStats.activeHolds, 
-      icon: Clock, 
-      color: 'text-amber-500', 
-      bg: 'bg-amber-50' 
+    {
+      label: 'Active Holds',
+      value: ticketingStats.activeHolds,
+      icon: Clock,
+      accent: 'text-amber-600',
+      iconBg: 'bg-amber-500/15',
     },
-    { 
-      label: 'Tickets Issued (Month)', 
-      value: ticketingStats.ticketsIssuedThisMonth, 
-      icon: CheckCircle2, 
-      color: 'text-emerald-500', 
-      bg: 'bg-emerald-50' 
+    {
+      label: 'Tickets Issued (Month)',
+      value: ticketingStats.ticketsIssuedThisMonth,
+      icon: CheckCircle2,
+      accent: 'text-emerald-600',
+      iconBg: 'bg-emerald-500/15',
     },
-    { 
-      label: 'Expected Markup', 
-      value: `${currency === 'USD' ? '$' : currency === 'SAR' ? 'SR' : 'Br'}${ticketingStats.expectedMarkup.toLocaleString()}`, 
-      icon: ShieldCheck, 
-      color: 'text-indigo-500', 
-      bg: 'bg-indigo-50' 
+    {
+      label: 'Expected Markup',
+      value: `${currency === 'USD' ? '$' : currency === 'SAR' ? 'SR' : 'Br'}${ticketingStats.expectedMarkup.toLocaleString()}`,
+      icon: ShieldCheck,
+      accent: 'text-emerald-600',
+      iconBg: 'bg-emerald-500/15',
     },
   ];
+
+  const confirmIssueTicket = async () => {
+    if (!issueForBooking) return;
+    const num = issueTicketNumber.trim();
+    if (!num) {
+      toast.error('Enter the ticket number');
+      return;
+    }
+    await issueTicket(issueForBooking.id, { ticketNumber: num });
+    setIssueForBooking(null);
+    setIssueTicketNumber('');
+  };
 
   return (
     <div className="space-y-8">
@@ -809,9 +421,10 @@ export const TicketingView: React.FC = () => {
           <p className="text-slate-500 mt-1">Enterprise GDS Interface & PNR Management.</p>
         </div>
         <div className="flex gap-3">
-          <button 
+          <button
+            type="button"
             onClick={() => setIsAddBookingModalOpen(true)}
-            className="flex items-center justify-center gap-2 px-6 py-3 bg-active-green text-white rounded-2xl font-bold shadow-lg shadow-active-green/20 hover:bg-active-green/90 transition-all active:scale-95"
+            className="flex items-center justify-center gap-2 px-6 py-3 bg-emerald-500 text-white rounded-2xl font-bold shadow-lg shadow-emerald-500/25 hover:bg-emerald-600 transition-all active:scale-95"
           >
             <Plus size={20} />
             New GDS Booking
@@ -819,19 +432,75 @@ export const TicketingView: React.FC = () => {
         </div>
       </header>
 
-      <NewBookingModal 
-        isOpen={isAddBookingModalOpen} 
-        onClose={() => setIsAddBookingModalOpen(false)} 
+      <NewGDSBookingDrawer
+        isOpen={isAddBookingModalOpen}
+        onClose={() => setIsAddBookingModalOpen(false)}
+        clients={clients}
+        staffOptions={staffOptions}
+        createBooking={createBooking}
       />
 
-      <ETicketModal 
+      <ETicketModal
         isOpen={isETicketModalOpen}
         onClose={() => setIsETicketModalOpen(false)}
         booking={selectedTicket}
         convertForDisplay={convertForDisplay}
       />
 
-      {/* Stats Grid */}
+      <AnimatePresence>
+        {issueForBooking && (
+          <div className="fixed inset-0 z-[140] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+              onClick={() => {
+                setIssueForBooking(null);
+                setIssueTicketNumber('');
+              }}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="relative glass-panel max-w-md w-full p-6 rounded-2xl border border-white/25 shadow-2xl"
+            >
+              <h3 className="text-lg font-bold text-slate-900">Issue ticket</h3>
+              <p className="text-sm text-slate-500 mt-1">
+                PNR <span className="font-mono font-bold text-slate-800">{issueForBooking.pnr}</span> — enter the airline ticket number.
+              </p>
+              <input
+                autoFocus
+                value={issueTicketNumber}
+                onChange={(e) => setIssueTicketNumber(e.target.value)}
+                placeholder="e.g. 071-1234567890"
+                className="mt-4 w-full px-4 py-3 rounded-xl border border-white/40 bg-white/70 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+              />
+              <div className="mt-5 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIssueForBooking(null);
+                    setIssueTicketNumber('');
+                  }}
+                  className="flex-1 py-3 rounded-xl border border-white/40 text-slate-700 text-sm font-semibold hover:bg-white/50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void confirmIssueTicket()}
+                  className="flex-1 py-3 rounded-xl bg-emerald-500 text-white text-sm font-bold shadow-lg shadow-emerald-500/30 hover:bg-emerald-600"
+                >
+                  Confirm issue
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {stats.map((stat, i) => (
           <motion.div
@@ -839,10 +508,10 @@ export const TicketingView: React.FC = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
-            className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm"
+            className="glass-panel p-6 rounded-[2rem] border border-white/25 shadow-lg"
           >
             <div className="flex items-center gap-4">
-              <div className={`p-4 rounded-2xl ${stat.bg} ${stat.color}`}>
+              <div className={`p-4 rounded-2xl ${stat.iconBg} ${stat.accent}`}>
                 <stat.icon size={24} />
               </div>
               <div>
@@ -854,48 +523,51 @@ export const TicketingView: React.FC = () => {
         ))}
       </div>
 
-      {/* PNR Management Table */}
-      <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
-        <div className="p-8 border-b border-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="glass-panel rounded-[2.5rem] border border-white/25 shadow-xl overflow-hidden">
+        <div className="p-6 md:p-8 border-b border-white/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <h3 className="text-xl font-bold text-slate-900">PNR Management</h3>
-          <div className="flex gap-4 items-center">
+          <div className="flex flex-wrap gap-3 items-center">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input 
-                type="text" 
-                placeholder="Search PNR or Client..."
+              <input
+                type="text"
+                placeholder="Search PNR, client, route…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-12 pr-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-active-green/20 transition-all w-64"
+                className="pl-12 pr-4 py-2.5 glass-panel border border-white/25 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/25 transition-all w-64"
               />
             </div>
             <div className="relative" ref={filterRef}>
-              <button 
+              <button
+                type="button"
                 onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
-                className={`p-2.5 rounded-xl transition-all ${isFilterMenuOpen ? 'bg-active-green text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+                className={`p-2.5 rounded-xl transition-all glass-panel border border-white/25 ${
+                  isFilterMenuOpen ? 'ring-2 ring-emerald-500/40 text-emerald-700' : 'text-slate-600'
+                }`}
               >
                 <Filter size={20} />
               </button>
-              
+
               <AnimatePresence>
                 {isFilterMenuOpen && (
                   <motion.div
                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 z-50"
+                    className="absolute right-0 mt-2 w-48 glass-panel rounded-2xl border border-white/25 p-2 z-50 shadow-xl"
                   >
-                    {['ALL', 'TICKETED', 'ON_HOLD', 'CANCELLED'].map((status) => (
+                    {(['ALL', 'TICKETED', 'ON_HOLD', 'VOIDED', 'CANCELLED'] as const).map((status) => (
                       <button
                         key={status}
+                        type="button"
                         onClick={() => {
-                          setStatusFilter(status as any);
+                          setStatusFilter(status);
                           setIsFilterMenuOpen(false);
                         }}
                         className={`w-full text-left px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                          statusFilter === status 
-                            ? 'bg-active-green/10 text-active-green' 
-                            : 'text-slate-600 hover:bg-slate-50'
+                          statusFilter === status
+                            ? 'bg-emerald-500/15 text-emerald-700'
+                            : 'text-slate-600 hover:bg-white/40'
                         }`}
                       >
                         {status}
@@ -905,140 +577,157 @@ export const TicketingView: React.FC = () => {
                 )}
               </AnimatePresence>
             </div>
-            <button 
+            <button
+              type="button"
               onClick={exportTicketingCSV}
-              className="p-2.5 bg-slate-50 text-slate-600 rounded-xl hover:bg-slate-100 transition-all"
+              className="p-2.5 glass-panel border border-white/25 text-slate-600 rounded-xl hover:bg-white/30 transition-all"
             >
               <Download size={20} />
             </button>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50/50">
-                <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">PNR</th>
-                <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Client</th>
-                <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Route</th>
-                <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
-                <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">TTL Countdown</th>
-                <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
+        <div className="p-6 md:p-8">
+          {filteredBookings.length === 0 ? (
+            <div className="flex flex-col items-center justify-center text-slate-400 py-16">
+              <Plane size={48} className="mb-4 opacity-20 text-emerald-600" />
+              <p className="text-sm font-medium">No bookings match your filters.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
               {filteredBookings.map((booking) => {
-                const urgent = isToday(booking.ticketingTimeLimit) && booking.status === 'ON_HOLD';
+                const urgency = getHoldUrgency(booking.ticketingTimeLimit, tickNow, booking.status);
+                const isCritical = booking.status === 'ON_HOLD' && urgency.level === 'critical';
+                const countdownLabel = formatHoldCountdown(urgency.remainingMs);
+
                 return (
-                  <tr 
-                    key={booking.id} 
-                    className={`hover:bg-slate-50/30 transition-all group ${urgent ? 'pulse-red bg-rose-50/30' : ''} ${booking.status === 'CANCELLED' ? 'opacity-50 grayscale-[0.5]' : ''}`}
+                  <motion.div
+                    key={booking.id}
+                    layout
+                    className={`glass-panel rounded-2xl border p-5 flex flex-col gap-4 transition-shadow ${
+                      booking.status === 'CANCELLED' ? 'opacity-60 grayscale-[0.3]' : ''
+                    } ${
+                      isCritical
+                        ? 'border-rose-500/50 shadow-[0_0_24px_-4px_rgba(244,63,94,0.55)] animate-pulse'
+                        : 'border-white/25 shadow-lg'
+                    }`}
                   >
-                    <td className="px-8 py-5">
-                      <span className="text-sm font-black text-slate-900 font-mono tracking-wider">{booking.pnr}</span>
-                    </td>
-                  <td className="px-8 py-5">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-900">{getClientName(booking.clientId)}</span>
-                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Premium Member</span>
-                    </div>
-                  </td>
-                  <td className="px-8 py-5">
-                    <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
-                      <span>{booking.itinerary[0]?.departure.airportCode}</span>
-                      <ArrowRight size={14} className="text-slate-300" />
-                      <span>{booking.itinerary[booking.itinerary.length - 1]?.arrival.airportCode}</span>
-                    </div>
-                  </td>
-                  <td className="px-8 py-5">
-                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border ${getStatusColor(booking.status)}`}>
-                      {booking.status}
-                    </span>
-                  </td>
-                  <td className="px-8 py-5">
-                    <div className="flex items-center gap-2">
-                      <Clock size={14} className={new Date(booking.ticketingTimeLimit) < new Date(Date.now() + 24*60*60*1000) ? 'text-rose-500' : 'text-slate-400'} />
-                      <span className={`text-xs font-bold ${new Date(booking.ticketingTimeLimit) < new Date(Date.now() + 24*60*60*1000) ? 'text-rose-600' : 'text-slate-600'}`}>
-                        {getTimeRemaining(booking.ticketingTimeLimit)}
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">PNR</p>
+                        <p className="text-lg font-black text-slate-900 font-mono tracking-wide">{booking.pnr}</p>
+                        <p className="text-[11px] font-semibold text-emerald-700 mt-0.5">
+                          {booking.airlineCode} · {booking.itinerarySummary}
+                        </p>
+                      </div>
+                      <span
+                        className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border ${getStatusColor(booking.status)}`}
+                      >
+                        {booking.status.replace(/_/g, ' ')}
                       </span>
                     </div>
-                  </td>
-                      <td className="px-8 py-5 text-right">
-                        <div className="flex items-center justify-end gap-2 relative">
-                          {booking.status === 'ON_HOLD' && (
-                            <button 
-                              onClick={() => issueTicket(booking.id)}
-                              className="px-4 py-1.5 bg-active-green text-white text-xs font-bold rounded-lg hover:bg-active-green/90 transition-all"
-                            >
-                              Issue Ticket
-                            </button>
-                          )}
-                          {booking.status === 'TICKETED' && (
-                            <button 
-                              onClick={() => {
-                                setSelectedTicket(booking);
-                                setIsETicketModalOpen(true);
-                              }}
-                              className="flex items-center gap-2 px-4 py-1.5 bg-slate-900 text-white text-xs font-bold rounded-lg hover:bg-slate-800 transition-all"
-                            >
-                              <Printer size={14} />
-                              E-Ticket
-                            </button>
-                          )}
-                          
-                          <div className="relative">
-                            <button 
-                              onClick={() => setActiveDropdownId(activeDropdownId === booking.id ? null : booking.id)}
-                              className={`p-2 rounded-lg transition-all row-dropdown-trigger ${activeDropdownId === booking.id ? 'bg-slate-100 text-slate-900' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}
-                            >
-                              <MoreHorizontal size={18} />
-                            </button>
-                            
-                            <AnimatePresence>
-                              {activeDropdownId === booking.id && (
-                                <motion.div
-                                  initial={{ opacity: 0, scale: 0.95, x: 10 }}
-                                  animate={{ opacity: 1, scale: 1, x: 0 }}
-                                  exit={{ opacity: 0, scale: 0.95, x: 10 }}
-                                  className="absolute right-full mr-2 top-0 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 z-50"
-                                >
-                                  {(booking.status === 'ON_HOLD' || booking.status === 'TICKETED') && (
-                                    <button 
-                                      onClick={() => {
-                                        cancelBooking(booking.id);
-                                        setActiveDropdownId(null);
-                                      }}
-                                      className="w-full text-left px-4 py-2 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 transition-all flex items-center gap-2"
-                                    >
-                                      <Trash2 size={14} />
-                                      Cancel Booking
-                                    </button>
-                                  )}
-                                  <button className="w-full text-left px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all flex items-center gap-2">
-                                    <FileText size={14} />
-                                    View Details
-                                  </button>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                          </div>
-                        </div>
-                      </td>
-                </tr>
-              );
-            })}
-            {filteredBookings.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-8 py-20 text-center">
-                    <div className="flex flex-col items-center justify-center text-slate-400">
-                      <Plane size={48} className="mb-4 opacity-10" />
-                      <p className="text-sm font-medium">No active bookings found in GDS.</p>
+
+                    <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                      <span>{getClientName(booking.clientId)}</span>
                     </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+
+                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                      <ArrowRight size={14} className="text-emerald-500 shrink-0" />
+                      <span className="font-semibold">
+                        {booking.itinerary[0]?.departure.airportCode} →{' '}
+                        {booking.itinerary[booking.itinerary.length - 1]?.arrival.airportCode}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Clock
+                        size={16}
+                        className={
+                          isCritical || urgency.level === 'expired' ? 'text-rose-500' : 'text-slate-400'
+                        }
+                      />
+                      <span
+                        className={`text-xs font-bold ${
+                          isCritical || urgency.level === 'expired' ? 'text-rose-600' : 'text-slate-600'
+                        }`}
+                      >
+                        TTL: {countdownLabel}
+                      </span>
+                      {isCritical && (
+                        <span className="text-[10px] font-black uppercase text-rose-600 bg-rose-500/15 px-2 py-0.5 rounded-md">
+                          Critical
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/20">
+                      {booking.status === 'ON_HOLD' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIssueForBooking(booking);
+                            setIssueTicketNumber('');
+                          }}
+                          className="px-5 py-2.5 bg-emerald-500 text-white text-sm font-black rounded-xl shadow-lg shadow-emerald-500/35 hover:bg-emerald-600 transition-all order-first"
+                        >
+                          Issue Ticket
+                        </button>
+                      )}
+                      {booking.status === 'TICKETED' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTicket(booking);
+                            setIsETicketModalOpen(true);
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-all"
+                        >
+                          <Printer size={14} />
+                          E-Ticket
+                        </button>
+                      )}
+                      <div className="relative ml-auto">
+                        <button
+                          type="button"
+                          onClick={() => setActiveDropdownId(activeDropdownId === booking.id ? null : booking.id)}
+                          className={`p-2 rounded-xl transition-all row-dropdown-trigger glass-panel border border-white/20 ${
+                            activeDropdownId === booking.id ? 'text-slate-900' : 'text-slate-400'
+                          }`}
+                        >
+                          <MoreHorizontal size={18} />
+                        </button>
+
+                        <AnimatePresence>
+                          {activeDropdownId === booking.id && (
+                            <motion.div
+                              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                              animate={{ opacity: 1, scale: 1, y: 0 }}
+                              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                              className="absolute right-0 mt-2 w-48 glass-panel rounded-2xl border border-white/25 p-2 z-50 shadow-xl"
+                            >
+                              {(booking.status === 'ON_HOLD' || booking.status === 'TICKETED') && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void cancelBooking(booking.id);
+                                    setActiveDropdownId(null);
+                                  }}
+                                  className="w-full text-left px-4 py-2 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-500/10 transition-all flex items-center gap-2"
+                                >
+                                  <Trash2 size={14} />
+                                  Cancel Booking
+                                </button>
+                              )}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
