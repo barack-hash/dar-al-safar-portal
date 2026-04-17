@@ -20,6 +20,9 @@ import {
   Pencil
 } from 'lucide-react';
 import { useClientsContext, useUI } from '../contexts/AppContext';
+import { useUser } from '../contexts/UserContext';
+import { useStaffRegistry } from '../hooks/useStaffRegistry';
+import { AddTeamMemberModal } from './AddTeamMemberModal';
 import { Employee, EmployeeRole, PaymentFrequency, Currency } from '../types';
 
 const PAYROLL_CURRENCY: Currency = 'ETB';
@@ -28,6 +31,9 @@ import { calculatePayroll } from '../lib/payrollEngine';
 export const StaffView: React.FC = () => {
   const { employees, addEmployee, updateEmployee, deleteEmployee, generatePayroll, transactions } = useClientsContext();
   const { currency, convertForDisplay } = useUI();
+  const { effectiveAccessRole, hasPermission } = useUser();
+  const { registryMembers, refetchRegistry, loading: registryLoading } = useStaffRegistry();
+  const [isTeamMemberModalOpen, setIsTeamMemberModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isHourlyModalOpen, setIsHourlyModalOpen] = useState(false);
   const [selectedEmployeeForPayslip, setSelectedEmployeeForPayslip] = useState<Employee | null>(null);
@@ -76,7 +82,7 @@ export const StaffView: React.FC = () => {
           <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Staff Registry</h2>
           <p className="text-slate-500 mt-1">Manage Dar Al Safar's elite concierge and operations team.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3 justify-end">
           <button 
             onClick={handleGeneratePayroll}
             disabled={isPayrollGenerated}
@@ -89,13 +95,26 @@ export const StaffView: React.FC = () => {
             <CreditCard size={20} />
             {isPayrollGenerated ? 'Payroll Generated' : 'Generate Monthly Payroll'}
           </button>
-          <button 
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center justify-center gap-2 px-6 py-3 bg-active-green text-white rounded-2xl font-bold shadow-lg shadow-active-green/20 hover:bg-active-green/90 transition-all active:scale-95"
-          >
-            <Plus size={20} />
-            Add Employee
-          </button>
+          {effectiveAccessRole === 'SUPERADMIN' && (
+            <button 
+              type="button"
+              onClick={() => setIsTeamMemberModalOpen(true)}
+              className="flex items-center justify-center gap-2 px-6 py-3 bg-emerald-500 text-white rounded-2xl font-bold shadow-lg shadow-emerald-500/25 hover:bg-emerald-600 transition-all active:scale-95"
+            >
+              <Plus size={20} />
+              Add team member
+            </button>
+          )}
+          {hasPermission('staff', 'edit') && (
+            <button 
+              type="button"
+              onClick={() => setIsAddModalOpen(true)}
+              className="flex items-center justify-center gap-2 px-6 py-3 bg-white border border-slate-200 text-slate-900 rounded-2xl font-bold shadow-sm hover:bg-slate-50 transition-all active:scale-95"
+            >
+              <Plus size={20} />
+              Add payroll employee
+            </button>
+          )}
         </div>
       </header>
 
@@ -135,10 +154,62 @@ export const StaffView: React.FC = () => {
         </div>
       </div>
 
+      {/* Supabase portal profiles */}
+      <div className="glass-panel rounded-[2.5rem] border border-white/25 shadow-sm overflow-hidden">
+        <div className="p-8 border-b border-black/5">
+          <h3 className="text-xl font-bold text-slate-900">Portal access</h3>
+          <p className="text-sm text-slate-500 mt-1 font-medium">
+            Team members with app sign-in (Supabase <code className="text-xs bg-slate-100 px-1 rounded">profiles</code>).
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50/50">
+                <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Name</th>
+                <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Email</th>
+                <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Access role</th>
+                <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Auth</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-black/5">
+              {registryLoading ? (
+                <tr>
+                  <td colSpan={4} className="px-8 py-10 text-sm text-slate-500">
+                    Loading directory…
+                  </td>
+                </tr>
+              ) : registryMembers.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-8 py-10 text-sm text-slate-500">
+                    No profiles yet. Super Admins can add a team member to create one.
+                  </td>
+                </tr>
+              ) : (
+                registryMembers.map((row) => (
+                  <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-8 py-4 text-sm font-bold text-slate-900">{row.full_name || '—'}</td>
+                    <td className="px-8 py-4 text-sm text-slate-600">{row.email}</td>
+                    <td className="px-8 py-4">
+                      <span className="px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 text-[10px] font-bold uppercase tracking-widest">
+                        {row.access_role}
+                      </span>
+                    </td>
+                    <td className="px-8 py-4 text-xs font-medium text-slate-500">
+                      {row.user_id ? 'Linked' : 'Pending invite'}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* Employee List */}
       <div className="bg-white/50 backdrop-blur-md rounded-[2.5rem] border border-white/20 shadow-sm overflow-hidden">
         <div className="p-8 border-b border-black/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <h3 className="text-xl font-bold text-slate-900">Staff Directory</h3>
+          <h3 className="text-xl font-bold text-slate-900">Payroll roster</h3>
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input 
@@ -250,6 +321,12 @@ export const StaffView: React.FC = () => {
           </div>
         )}
       </div>
+
+      <AddTeamMemberModal
+        isOpen={isTeamMemberModalOpen}
+        onClose={() => setIsTeamMemberModalOpen(false)}
+        onSuccess={() => void refetchRegistry()}
+      />
 
       <AddEmployeeModal 
         isOpen={isAddModalOpen} 
