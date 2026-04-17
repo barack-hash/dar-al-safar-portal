@@ -35,8 +35,6 @@ import {
   InvoiceItem, 
   InvoiceStatus, 
   Client, 
-  Transaction, 
-  TransactionType,
   Investor,
   CapitalInjection,
   CapitalInjectionType,
@@ -47,7 +45,8 @@ import {
   FormalLedgerEntry,
 } from '../types';
 import { COUNTRIES } from '../constants/countries';
-import { toast } from 'sonner';
+import { filterFormalLedgerByCalendarMonth } from '../lib/formalLedgerReports';
+import { formalLedgerRowsToCsv, downloadCsvBlob } from '../lib/csvExport';
 
 interface FormalLedgerTableProps {
   entries: FormalLedgerEntry[];
@@ -349,7 +348,7 @@ export const AccountingView: React.FC = () => {
     clients, 
     addInvoice, 
     addTransaction, 
-    generateMonthlyReport,
+    generateFormalPeriodReport,
     investors,
     addInvestor,
     updateInvestor,
@@ -386,9 +385,33 @@ export const AccountingView: React.FC = () => {
     return () => window.removeEventListener('click', handleClickOutside);
   }, [activeBankDropdown]);
 
-  const monthlyReport = useMemo(() => 
-    generateMonthlyReport(reportDate.month, reportDate.year),
-  [generateMonthlyReport, reportDate]);
+  const formalPeriodReport = useMemo(
+    () => generateFormalPeriodReport(reportDate.month, reportDate.year),
+    [generateFormalPeriodReport, reportDate]
+  );
+
+  const periodFormalEntries = useMemo(
+    () => filterFormalLedgerByCalendarMonth(formalLedger, reportDate.month, reportDate.year),
+    [formalLedger, reportDate]
+  );
+
+  const verifiedCountInPeriod = useMemo(
+    () => periodFormalEntries.filter((e) => e.status === 'VERIFIED').length,
+    [periodFormalEntries]
+  );
+
+  const exportOfficialTaxCsv = useCallback(() => {
+    const rows = periodFormalEntries.filter((e) => e.status === 'VERIFIED');
+    const csv = formalLedgerRowsToCsv(rows);
+    const m = String(reportDate.month + 1).padStart(2, '0');
+    downloadCsvBlob(csv, `DASA_FormalLedger_VERIFIED_${reportDate.year}_${m}.csv`);
+  }, [periodFormalEntries, reportDate.month, reportDate.year]);
+
+  const exportAllFormalCsv = useCallback(() => {
+    const csv = formalLedgerRowsToCsv(periodFormalEntries);
+    const m = String(reportDate.month + 1).padStart(2, '0');
+    downloadCsvBlob(csv, `DASA_FormalLedger_ALL_${reportDate.year}_${m}.csv`);
+  }, [periodFormalEntries, reportDate.month, reportDate.year]);
 
   const verifiedFormal = useMemo(
     () => formalLedger.filter((e) => e.status === 'VERIFIED'),
@@ -422,34 +445,6 @@ export const AccountingView: React.FC = () => {
 
     return { netProfit, operatingExpenses, vatPayable, whtPayable, treasury };
   }, [verifiedFormal, convertForDisplay]);
-
-  const exportToCSV = () => {
-    const headers = ['Date', 'Description', 'Type', 'Category', 'Amount', 'VAT', 'WHT'];
-    const rows = monthlyReport.transactions.map((tx: Transaction) => [
-      tx.date,
-      tx.description,
-      tx.type,
-      tx.category,
-      convertForDisplay(tx.amount, tx.currency),
-      convertForDisplay(tx.taxDetails.vat, tx.currency),
-      convertForDisplay(tx.taxDetails.wht, tx.currency)
-    ]);
-
-    const csvContent = [
-      headers.join(','),
-      ...rows.map((row: Array<string | number>) => row.join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `DASA_Ledger_${reportDate.year}_${reportDate.month + 1}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   const stats: MetricStat[] = [
     {
@@ -809,15 +804,15 @@ export const AccountingView: React.FC = () => {
       ) : (
         <div className="space-y-8">
           {/* Report Controls */}
-          <div className="glass-card p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="flex items-center gap-4">
+          <div className="glass-panel rounded-[2.5rem] border border-white/25 shadow-sm p-6 md:p-8 flex flex-col gap-6">
+            <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-6">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Reporting Period</label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <select 
                     value={reportDate.month}
-                    onChange={(e) => setReportDate({ ...reportDate, month: parseInt(e.target.value) })}
-                    className="px-4 py-2 bg-slate-50 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-active-green/20 transition-all"
+                    onChange={(e) => setReportDate({ ...reportDate, month: parseInt(e.target.value, 10) })}
+                    className="px-4 py-2 bg-white/70 border border-white/40 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-active-green/20 transition-all"
                   >
                     {Array.from({ length: 12 }).map((_, i) => (
                       <option key={i} value={i}>{new Date(0, i).toLocaleString('default', { month: 'long' })}</option>
@@ -825,23 +820,40 @@ export const AccountingView: React.FC = () => {
                   </select>
                   <select 
                     value={reportDate.year}
-                    onChange={(e) => setReportDate({ ...reportDate, year: parseInt(e.target.value) })}
-                    className="px-4 py-2 bg-slate-50 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-active-green/20 transition-all"
+                    onChange={(e) => setReportDate({ ...reportDate, year: parseInt(e.target.value, 10) })}
+                    className="px-4 py-2 bg-white/70 border border-white/40 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-active-green/20 transition-all"
                   >
-                    {[2024, 2025, 2026].map(year => (
+                    {[2024, 2025, 2026, 2027].map(year => (
                       <option key={year} value={year}>{year}</option>
                     ))}
                   </select>
                 </div>
               </div>
+              <div className="flex flex-col gap-3 items-stretch sm:items-end">
+                <p className="text-sm text-slate-600 text-right max-w-md leading-snug">
+                  <span className="font-bold text-slate-800">{verifiedCountInPeriod}</span>
+                  {' '}verified formal ledger row{verifiedCountInPeriod === 1 ? '' : 's'} in this period ready for official export.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                  <button 
+                    type="button"
+                    onClick={exportOfficialTaxCsv}
+                    className="flex items-center justify-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all active:scale-95 shadow-sm"
+                  >
+                    <Download size={20} />
+                    Official Tax Export
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={exportAllFormalCsv}
+                    className="flex items-center justify-center gap-2 px-6 py-3 bg-white/80 border border-slate-200/80 text-slate-800 rounded-2xl font-bold hover:bg-white transition-all active:scale-95"
+                  >
+                    <Download size={20} />
+                    All Entries (incl. Pending)
+                  </button>
+                </div>
+              </div>
             </div>
-            <button 
-              onClick={exportToCSV}
-              className="flex items-center justify-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all active:scale-95"
-            >
-              <Download size={20} />
-              Export CSV for Accountant
-            </button>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -860,14 +872,14 @@ export const AccountingView: React.FC = () => {
                     <span className="text-slate-500">Total Operating Revenue</span>
                     <span className="font-bold text-slate-900">
                       {currency === 'USD' ? '$' : currency === 'SAR' ? 'SR' : 'Br'}
-                      {monthlyReport.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      {formalPeriodReport.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-500">Cost of Services</span>
                     <span className="font-bold text-rose-500">
                       ({currency === 'USD' ? '$' : currency === 'SAR' ? 'SR' : 'Br'}
-                      {monthlyReport.totalExpenses.toLocaleString(undefined, { minimumFractionDigits: 2 })})
+                      {formalPeriodReport.totalExpenses.toLocaleString(undefined, { minimumFractionDigits: 2 })})
                     </span>
                   </div>
                 </div>
@@ -876,9 +888,9 @@ export const AccountingView: React.FC = () => {
 
                 <div className="flex justify-between items-center">
                   <span className="text-lg font-bold text-slate-900">Net Monthly Income</span>
-                  <span className={`text-2xl font-bold ${monthlyReport.netIncome >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  <span className={`text-2xl font-bold ${formalPeriodReport.netIncome >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                     {currency === 'USD' ? '$' : currency === 'SAR' ? 'SR' : 'Br'}
-                    {monthlyReport.netIncome.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    {formalPeriodReport.netIncome.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>
@@ -886,7 +898,7 @@ export const AccountingView: React.FC = () => {
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">Note</p>
                 <p className="text-xs text-slate-600 leading-relaxed italic">
-                  This statement is auto-generated based on recorded ledger entries for the selected period.
+                  Figures reflect verified formal ledger posts in this calendar month (operating revenue uses net amounts on income rows).
                 </p>
               </div>
             </div>
@@ -907,14 +919,14 @@ export const AccountingView: React.FC = () => {
                     <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest mb-1">VAT Collected (Output)</p>
                     <p className="text-xl font-bold text-slate-900">
                       {currency === 'USD' ? '$' : currency === 'SAR' ? 'SR' : 'Br'}
-                      {monthlyReport.vatCollected.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      {formalPeriodReport.vatCollected.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </p>
                   </div>
                   <div className="p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10">
                     <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1">VAT Paid (Input)</p>
                     <p className="text-xl font-bold text-slate-900">
                       {currency === 'USD' ? '$' : currency === 'SAR' ? 'SR' : 'Br'}
-                      {monthlyReport.vatPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      {formalPeriodReport.vatPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </p>
                   </div>
                 </div>
@@ -925,14 +937,14 @@ export const AccountingView: React.FC = () => {
                       <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-1">Net VAT Payable</p>
                       <p className="text-2xl font-bold text-slate-900">
                         {currency === 'USD' ? '$' : currency === 'SAR' ? 'SR' : 'Br'}
-                        {(monthlyReport.vatCollected - monthlyReport.vatPaid).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        {(formalPeriodReport.vatCollected - formalPeriodReport.vatPaid).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </p>
                     </div>
                     <div className="text-right">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">WHT Deducted</p>
                       <p className="text-lg font-bold text-slate-600">
                         {currency === 'USD' ? '$' : currency === 'SAR' ? 'SR' : 'Br'}
-                        {monthlyReport.whtDeducted.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        {formalPeriodReport.whtDeducted.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </p>
                     </div>
                   </div>

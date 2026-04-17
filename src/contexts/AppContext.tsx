@@ -37,6 +37,11 @@ import {
   type ExchangeRatesSource,
 } from '../lib/currencyService';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
+import {
+  filterFormalLedgerByCalendarMonth,
+  computeFormalPeriodReportDisplay,
+  type FormalPeriodReportDisplay,
+} from '../lib/formalLedgerReports';
 
 interface UIContextType {
   searchQuery: string;
@@ -112,6 +117,8 @@ interface ClientsContextType {
     transactionCount: number;
     transactions: Transaction[];
   };
+  /** Verified formal ledger rows in the calendar month, display-currency rollups. */
+  generateFormalPeriodReport: (month: number, year: number) => FormalPeriodReportDisplay;
   bookings: BookingRecord[];
   createBooking: (booking: Omit<BookingRecord, 'id'>) => Promise<BookingRecord>;
   issueTicket: (id: string, payload: { ticketNumber: string }) => Promise<void>;
@@ -304,6 +311,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const { cashLog, addCashLogEntry, updateCashLogEntry, deleteCashLogEntry } = useCashLog();
   const { formalLedger, refreshFormalLedger, promoteCashLogEntry, insertTicketingIncomePending } =
     useFormalLedger();
+
+  const generateFormalPeriodReport = useCallback(
+    (month: number, year: number) => {
+      const slice = filterFormalLedgerByCalendarMonth(formalLedger, month, year);
+      return computeFormalPeriodReportDisplay(slice, currency, exchangeRates);
+    },
+    [formalLedger, currency, exchangeRates]
+  );
 
   const issueTicket = useCallback(
     async (id: string, payload: { ticketNumber: string }) => {
@@ -521,6 +536,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteEmployee,
     generatePayroll,
     generateMonthlyReport,
+    generateFormalPeriodReport,
     bookings,
     createBooking,
     issueTicket,
@@ -549,7 +565,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     transactions, addTransaction, voidTransaction, accountingStats,
     investors, addInvestor, updateInvestor, capitalInjections, recordCapitalInjection, totalCapitalRaisedDisplay, totalPersonalHoldingDisplay,
     bankAccounts, addBankAccount, updateBankAccount, deleteBankAccount, accountBalances,
-    employees, addEmployee, updateEmployee, deleteEmployee, generatePayroll, generateMonthlyReport,
+    employees, addEmployee, updateEmployee, deleteEmployee, generatePayroll, generateMonthlyReport, generateFormalPeriodReport,
     bookings, createBooking, issueTicket, cancelBooking, expiringHolds, ticketingStatsDisplay,
     visas, events, addVisa, updateVisa, updateVisaStatus, updateVisaDocument, addEvent, updateEventStatus, urgentVisas,
     cashLog, addCashLogEntry, updateCashLogEntry, deleteCashLogEntry,

@@ -44,7 +44,7 @@ const DashboardView = () => {
     visas, 
     investors,
     capitalInjections,
-    generateMonthlyReport
+    generateFormalPeriodReport
   } = useClientsContext();
   
   const getCurrencySymbol = (curr: string) => {
@@ -85,8 +85,8 @@ const DashboardView = () => {
     }), [clients, now]);
 
   const currentMonthReport = useMemo(
-    () => generateMonthlyReport(currentDate.getMonth(), currentDate.getFullYear()),
-    [generateMonthlyReport, currentDate]
+    () => generateFormalPeriodReport(currentDate.getMonth(), currentDate.getFullYear()),
+    [generateFormalPeriodReport, currentDate]
   );
 
   const totalAUM = useMemo(
@@ -124,7 +124,7 @@ const DashboardView = () => {
     {
       label: 'Monthly Revenue',
       value: `${symbol}${currentMonthReport.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
-      helper: `${new Date().toLocaleString('default', { month: 'long' })} performance`,
+      helper: `${new Date().toLocaleString('default', { month: 'long' })} · verified formal ledger`,
       icon: Wallet,
       iconClass: 'bg-emerald-50 text-emerald-600 border-emerald-100'
     },
