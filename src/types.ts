@@ -216,7 +216,13 @@ export interface BookingRecord {
   issuedAt?: string;
 }
 
-export type VisaStatus = 'COLLECTING_DOCS' | 'APPOINTMENT_BOOKED' | 'PROCESSING' | 'APPROVED' | 'REJECTED';
+export type VisaStatus =
+  | 'GATHERING_DOCS'
+  | 'READY_TO_SUBMIT'
+  | 'IN_PROCESSING'
+  | 'ACTION_REQUIRED'
+  | 'APPROVED'
+  | 'REJECTED';
 
 export type VisaDocumentStatus = 'MISSING' | 'UPLOADED' | 'VERIFIED';
 
@@ -243,6 +249,11 @@ export interface VisaApplication {
   pointOfEntry: string;
   yellowFeverRequired: boolean;
   intendedEntryDate?: string;
+  /** profiles.user_id of assigned staff */
+  assignedStaffId?: string;
+  externalTrackingId?: string;
+  processingCenter?: string;
+  expectedApprovalDate?: string;
 }
 
 export type EventCategory = 'HOTEL' | 'TOUR' | 'TRANSFER' | 'VIP_ACCESS';

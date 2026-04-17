@@ -53,6 +53,10 @@ export interface VisaRow {
   point_of_entry: string;
   yellow_fever_required: boolean;
   intended_entry_date: string | null;
+  assigned_staff_id?: string | null;
+  external_tracking_id?: string | null;
+  processing_center?: string | null;
+  expected_approval_date?: string | null;
 }
 
 export interface CashTransactionRow {
@@ -166,6 +170,10 @@ export function visaFromRow(r: VisaRow): VisaApplication {
     pointOfEntry: r.point_of_entry,
     yellowFeverRequired: r.yellow_fever_required,
     intendedEntryDate: r.intended_entry_date ?? undefined,
+    assignedStaffId: r.assigned_staff_id ?? undefined,
+    externalTrackingId: r.external_tracking_id ?? undefined,
+    processingCenter: r.processing_center ?? undefined,
+    expectedApprovalDate: r.expected_approval_date ?? undefined,
   };
 }
 
@@ -184,6 +192,10 @@ export function visaToInsert(v: VisaApplication): VisaRow {
     point_of_entry: v.pointOfEntry,
     yellow_fever_required: v.yellowFeverRequired,
     intended_entry_date: v.intendedEntryDate ?? null,
+    assigned_staff_id: v.assignedStaffId ?? null,
+    external_tracking_id: v.externalTrackingId ?? null,
+    processing_center: v.processingCenter ?? null,
+    expected_approval_date: v.expectedApprovalDate ?? null,
   };
 }
 

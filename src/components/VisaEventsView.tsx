@@ -19,23 +19,24 @@ import {
   X,
   Star,
   Upload,
-  Check,
-  UserPlus,
-  ArrowRight
+  Check
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useClientsContext, useAppContext } from '../contexts/AppContext';
-import { VisaApplication, EventBooking, VisaStatus, EventCategory, EventStatus, VisaDocument, VisaDocumentStatus } from '../types';
+import { VisaApplication, EventBooking, VisaStatus, EventCategory, EventStatus, VisaDocumentStatus } from '../types';
 import { toast } from 'sonner';
-import { COUNTRIES } from '../constants/countries';
 import { GlassSelect } from './ui/GlassSelect';
+import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import { VisaKanbanBoard } from './visa/VisaKanbanBoard';
+import { NewVisaApplicationDrawer, type StaffOption } from './visa/NewVisaApplicationDrawer';
 
 const VISA_STATUS_CONFIG: Record<VisaStatus, { label: string; progress: number; color: string; icon: LucideIcon }> = {
-  'COLLECTING_DOCS': { label: 'Collecting Docs', progress: 20, color: 'bg-amber-500', icon: FileText },
-  'APPOINTMENT_BOOKED': { label: 'Appointment', progress: 40, color: 'bg-blue-500', icon: Calendar },
-  'PROCESSING': { label: 'Processing', progress: 70, color: 'bg-indigo-500', icon: Clock },
-  'APPROVED': { label: 'Approved', progress: 100, color: 'bg-emerald-500', icon: CheckCircle2 },
-  'REJECTED': { label: 'Rejected', progress: 100, color: 'bg-rose-500', icon: AlertCircle },
+  GATHERING_DOCS: { label: 'Gathering Docs', progress: 15, color: 'bg-amber-500', icon: FileText },
+  READY_TO_SUBMIT: { label: 'Ready to Submit', progress: 35, color: 'bg-sky-500', icon: Calendar },
+  IN_PROCESSING: { label: 'In Processing', progress: 60, color: 'bg-indigo-500', icon: Clock },
+  ACTION_REQUIRED: { label: 'Action Required', progress: 75, color: 'bg-rose-500', icon: AlertCircle },
+  APPROVED: { label: 'Approved', progress: 100, color: 'bg-emerald-500', icon: CheckCircle2 },
+  REJECTED: { label: 'Rejected', progress: 100, color: 'bg-rose-600', icon: AlertCircle },
 };
 
 const EVENT_CATEGORY_CONFIG: Record<EventCategory, { label: string; color: string; icon: LucideIcon }> = {
@@ -47,33 +48,23 @@ const EVENT_CATEGORY_CONFIG: Record<EventCategory, { label: string; color: strin
 
 export const VisaEventsView: React.FC = () => {
   const [activeSubView, setActiveSubView] = useState<'visa' | 'concierge'>('visa');
-  const { visas, events, clients, updateVisa, updateVisaStatus, updateEventStatus, addEvent, addVisa, updateVisaDocument, addClient } = useClientsContext();
+  const { visas, events, clients, updateVisa, updateVisaStatus, updateEventStatus, addEvent, addVisa, updateVisaDocument } = useClientsContext();
   const { isAddVisaModalOpen, setIsAddVisaModalOpen } = useAppContext();
+  const [isNewVisaDrawerOpen, setIsNewVisaDrawerOpen] = useState(false);
   const [isNewEventModalOpen, setIsNewEventModalOpen] = useState(false);
   const [visaSearch, setVisaSearch] = useState('');
   const [selectedVisaForManagement, setSelectedVisaForManagement] = useState<VisaApplication | null>(null);
-  const [isQuickAddingClient, setIsQuickAddingClient] = useState(false);
-  const [quickAddData, setQuickAddData] = useState({
-    firstName: '',
-    lastName: '',
-    passportID: '',
-    nationality: ''
-  });
-  const [selectedClientId, setSelectedClientId] = useState<string>('');
+  const [staffByUserId, setStaffByUserId] = useState<Map<string, string>>(() => new Map());
+  const [staffOptions, setStaffOptions] = useState<StaffOption[]>([]);
   const [arrangementClientId, setArrangementClientId] = useState('');
   const [arrangementCategory, setArrangementCategory] = useState<EventCategory>('HOTEL');
-  const [newVisaData, setNewVisaData] = useState({
-    destinationCountry: '',
-    visaType: 'Schengen - Tourist',
-    documentDeadline: '',
-    passportRequired: false,
-    pointOfEntry: 'Addis Ababa Bole International Airport',
-    yellowFeverRequired: false,
-    intendedEntryDate: '',
-    countrySearch: ''
-  });
 
-  const highRiskZones = ['Brazil', 'Angola', 'Benin', 'Burkina Faso', 'Burundi', 'Cameroon', 'Central African Republic', 'Chad', 'Congo', 'Cote d\'Ivoire', 'Democratic Republic of the Congo', 'Equatorial Guinea', 'Ethiopia', 'Gabon', 'Gambia', 'Ghana', 'Guinea', 'Guinea-Bissau', 'Kenya', 'Liberia', 'Mali', 'Mauritania', 'Niger', 'Nigeria', 'Senegal', 'Sierra Leone', 'South Sudan', 'Sudan', 'Togo', 'Uganda'];
+  useEffect(() => {
+    if (isAddVisaModalOpen) {
+      setIsNewVisaDrawerOpen(true);
+      setIsAddVisaModalOpen(false);
+    }
+  }, [isAddVisaModalOpen, setIsAddVisaModalOpen]);
 
   useEffect(() => {
     if (isNewEventModalOpen) {
@@ -83,15 +74,40 @@ export const VisaEventsView: React.FC = () => {
   }, [isNewEventModalOpen]);
 
   useEffect(() => {
-    if (selectedClientId) {
-      const client = clients.find(c => c.id === selectedClientId);
-      if (client && highRiskZones.includes(client.nationality)) {
-        setNewVisaData(prev => ({ ...prev, yellowFeverRequired: true }));
-      } else {
-        setNewVisaData(prev => ({ ...prev, yellowFeverRequired: false }));
-      }
+    if (!isSupabaseConfigured()) {
+      setStaffByUserId(new Map());
+      setStaffOptions([]);
+      return;
     }
-  }, [selectedClientId, clients]);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const sb = getSupabase();
+        const { data, error } = await sb.from('profiles').select('user_id, full_name, email');
+        if (error) throw error;
+        if (cancelled || !data) return;
+        const map = new Map<string, string>();
+        const opts: StaffOption[] = [];
+        for (const row of data as { user_id: string | null; full_name: string | null; email: string }[]) {
+          if (!row.user_id) continue;
+          const name = (row.full_name?.trim() || row.email || 'Staff').trim();
+          map.set(row.user_id, name);
+          opts.push({ userId: row.user_id, name });
+        }
+        opts.sort((a, b) => a.name.localeCompare(b.name));
+        setStaffByUserId(map);
+        setStaffOptions(opts);
+      } catch {
+        if (!cancelled) {
+          setStaffByUserId(new Map());
+          setStaffOptions([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedVisaForManagement) return;
@@ -156,7 +172,7 @@ export const VisaEventsView: React.FC = () => {
   const handleStatusChange = (newStatus: VisaStatus) => {
     if (!selectedVisaForManagement) return;
     
-    if (newStatus === 'PROCESSING') {
+    if (newStatus === 'IN_PROCESSING') {
       const allVerified = selectedVisaForManagement.documents.every(d => d.status === 'VERIFIED');
       if (!allVerified) {
         toast.error('Compliance Error', {
@@ -176,35 +192,6 @@ export const VisaEventsView: React.FC = () => {
     updateVisa(selectedVisaForManagement.id, { appointmentDate: date });
     setSelectedVisaForManagement(prev => prev ? { ...prev, appointmentDate: date } : null);
     toast.success('Appointment date updated');
-  };
-
-  const handleQuickAdd = async () => {
-    if (!quickAddData.firstName || !quickAddData.lastName || !quickAddData.passportID) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-
-    try {
-      const newClient = await addClient({
-        name: `${quickAddData.firstName} ${quickAddData.lastName}`,
-        email: '', // Optional for quick add
-        passportID: quickAddData.passportID,
-        nationality: quickAddData.nationality,
-        expiryDate: '', // Could be added later
-        contact: '',
-        source: 'Visa Walk-in',
-        notes: '',
-      });
-
-      if (newClient?.id) {
-        setSelectedClientId(newClient.id);
-        setIsQuickAddingClient(false);
-        setQuickAddData({ firstName: '', lastName: '', passportID: '', nationality: '' });
-        toast.success('Client added and selected.');
-      }
-    } catch {
-      /* toast from hook */
-    }
   };
 
   const handleCreateArrangement = (e: React.FormEvent<HTMLFormElement>) => {
@@ -237,78 +224,6 @@ export const VisaEventsView: React.FC = () => {
       setIsNewEventModalOpen(false);
     } catch (error) {
       toast.error('Failed to create arrangement. Please try again.');
-    }
-  };
-
-  const handleCreateVisaApplication = async () => {
-    try {
-      if (!selectedClientId) {
-        toast.error('Please select a client');
-        return;
-      }
-      if (!newVisaData.destinationCountry || !newVisaData.documentDeadline) {
-        toast.error('Please fill in all required fields');
-        return;
-      }
-
-      const generateChecklist = () => {
-        const docs = [
-          { id: 'd1', name: 'Recent Passport-size photo', status: 'MISSING' as VisaDocumentStatus },
-          { id: 'd2', name: 'Passport Bio-page (valid >6 months)', status: 'MISSING' as VisaDocumentStatus }
-        ];
-
-        if (newVisaData.visaType.includes('(BRV)')) {
-          docs.push(
-            { id: 'd3', name: 'Support Letter from Sending Co', status: 'MISSING' as VisaDocumentStatus },
-            { id: 'd4', name: 'Invitation Letter from Ethiopia', status: 'MISSING' as VisaDocumentStatus },
-            { id: 'd5', name: 'Business License of Inviting Co', status: 'MISSING' as VisaDocumentStatus }
-          );
-        } else if (newVisaData.visaType.includes('(IV)')) {
-          docs.push(
-            { id: 'd3', name: 'Investment Permit', status: 'MISSING' as VisaDocumentStatus },
-            { id: 'd4', name: 'Support Letter from Investment Commission', status: 'MISSING' as VisaDocumentStatus }
-          );
-        } else {
-          docs.push({ id: 'd3', name: 'Bank Statement', status: 'MISSING' as VisaDocumentStatus });
-        }
-
-        if (newVisaData.yellowFeverRequired) {
-          docs.push({ id: `d${docs.length + 1}`, name: 'Yellow Fever Certificate', status: 'MISSING' as VisaDocumentStatus });
-        }
-
-        return docs;
-      };
-
-      await addVisa({
-        clientId: selectedClientId,
-        destinationCountry: newVisaData.destinationCountry,
-        visaType: newVisaData.visaType,
-        status: 'COLLECTING_DOCS',
-        submissionDate: new Date().toISOString().split('T')[0],
-        documentDeadline: newVisaData.documentDeadline,
-        passportRequired: newVisaData.passportRequired,
-        pointOfEntry: newVisaData.pointOfEntry,
-        yellowFeverRequired: newVisaData.yellowFeverRequired,
-        intendedEntryDate: newVisaData.intendedEntryDate,
-        documents: generateChecklist(),
-      });
-
-      toast.success('Visa application enrolled successfully');
-      setIsAddVisaModalOpen(false);
-      setNewVisaData({
-        destinationCountry: '',
-        visaType: 'Schengen - Tourist',
-        documentDeadline: '',
-        passportRequired: false,
-        pointOfEntry: 'Addis Ababa Bole International Airport',
-        yellowFeverRequired: false,
-        intendedEntryDate: '',
-        countrySearch: ''
-      });
-      setSelectedClientId('');
-      setIsQuickAddingClient(false);
-    } catch (error) {
-      toast.error('Failed to enroll visa application. Please try again.');
     }
   };
 
@@ -371,7 +286,7 @@ export const VisaEventsView: React.FC = () => {
                 <div className="flex flex-wrap items-center gap-3">
                   <button 
                     type="button"
-                    onClick={() => setIsAddVisaModalOpen(true)}
+                    onClick={() => setIsNewVisaDrawerOpen(true)}
                     className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-all duration-300 interactive-tap"
                   >
                     <Plus size={16} />
@@ -393,6 +308,19 @@ export const VisaEventsView: React.FC = () => {
                 </div>
               </div>
 
+              <div className="glass-panel border border-white/25 border-t-0 rounded-b-3xl rounded-t-none p-4 md:p-5 shadow-inner bg-slate-950/[0.35] dark:bg-slate-950/50">
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-emerald-600">Pipeline</h4>
+                  <span className="text-[10px] font-bold text-slate-500">{filteredVisas.length} in view</span>
+                </div>
+                <VisaKanbanBoard
+                  visas={filteredVisas}
+                  clients={clients}
+                  staffByUserId={staffByUserId}
+                  updateVisa={updateVisa}
+                />
+              </div>
+
               {visas.length === 0 ? (
                 <div className="px-8 py-16 md:py-20 text-center">
                   <div className="w-16 h-16 mx-auto rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 mb-6">
@@ -404,7 +332,7 @@ export const VisaEventsView: React.FC = () => {
                   </p>
                   <button
                     type="button"
-                    onClick={() => setIsAddVisaModalOpen(true)}
+                    onClick={() => setIsNewVisaDrawerOpen(true)}
                     className="mt-8 inline-flex items-center gap-2 px-6 py-3 bg-emerald-500 text-white rounded-2xl font-bold text-sm shadow-lg shadow-emerald-500/25 interactive-tap transition-all duration-300"
                   >
                     <Plus size={18} />
@@ -426,8 +354,7 @@ export const VisaEventsView: React.FC = () => {
                   <tbody className="divide-y divide-slate-50">
                     {filteredVisas.map((visa) => {
                       const client = clients.find(c => c.id === visa.clientId);
-                      const config = VISA_STATUS_CONFIG[visa.status];
-                      const StatusIcon = config.icon;
+                      const config = VISA_STATUS_CONFIG[visa.status] ?? VISA_STATUS_CONFIG.GATHERING_DOCS;
                       const isUrgent = isDeadlineUrgent(visa.documentDeadline) && hasMissingDocs(visa);
 
                       return (
@@ -717,259 +644,6 @@ export const VisaEventsView: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
-      {/* New Visa Application Modal */}
-      <AnimatePresence>
-        {isAddVisaModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => {
-                setIsAddVisaModalOpen(false);
-              }}
-              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-xl bg-white rounded-[32px] shadow-2xl overflow-hidden"
-            >
-              <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
-                <div>
-                  <h3 className="text-2xl font-bold text-slate-900 tracking-tight">New Visa Application</h3>
-                  <p className="text-xs text-slate-500 font-medium mt-1">Enroll a client for visa processing</p>
-                </div>
-                <button 
-                  onClick={() => {
-                    setIsAddVisaModalOpen(false);
-                    setIsQuickAddingClient(false);
-                  }}
-                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-white rounded-xl transition-all"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="p-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
-                <div className="space-y-8">
-                  {/* Section 1: Client Info */}
-                  <section className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                        1. Client Info (Who is traveling?)
-                      </label>
-                      <button 
-                        onClick={() => setIsQuickAddingClient(!isQuickAddingClient)}
-                        className="text-xs font-bold text-active-green hover:underline flex items-center gap-1"
-                      >
-                        {isQuickAddingClient ? (
-                          <>
-                            <ArrowRight className="rotate-180" size={14} />
-                            Back to Selection
-                          </>
-                        ) : (
-                          <>
-                            <UserPlus size={14} />
-                            Quick-Add New Client
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    <AnimatePresence mode="wait">
-                      {isQuickAddingClient ? (
-                        <motion.div
-                          key="quick-add-form"
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          className="space-y-4 p-6 bg-slate-50 rounded-[24px] border border-slate-200"
-                        >
-                          <div className="grid grid-cols-2 gap-4">
-                            <input 
-                              type="text" 
-                              placeholder="First Name" 
-                              value={quickAddData.firstName}
-                              onChange={(e) => setQuickAddData({...quickAddData, firstName: e.target.value})}
-                              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-active-green/20"
-                            />
-                            <input 
-                              type="text" 
-                              placeholder="Last Name" 
-                              value={quickAddData.lastName}
-                              onChange={(e) => setQuickAddData({...quickAddData, lastName: e.target.value})}
-                              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-active-green/20"
-                            />
-                          </div>
-                          <div className="grid grid-cols-2 gap-4">
-                            <input 
-                              type="text" 
-                              placeholder="Passport Number" 
-                              value={quickAddData.passportID}
-                              onChange={(e) => setQuickAddData({...quickAddData, passportID: e.target.value})}
-                              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-active-green/20"
-                            />
-                            <input 
-                              type="text" 
-                              placeholder="Nationality" 
-                              value={quickAddData.nationality}
-                              onChange={(e) => setQuickAddData({...quickAddData, nationality: e.target.value})}
-                              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-active-green/20"
-                            />
-                          </div>
-                          <button 
-                            onClick={handleQuickAdd}
-                            className="w-full py-3 bg-active-green text-white rounded-xl font-bold text-sm shadow-lg shadow-active-green/20 hover:bg-active-green/90 transition-all"
-                          >
-                            Save & Select Client
-                          </button>
-                        </motion.div>
-                      ) : (
-                        <motion.div
-                          key="client-select"
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                        >
-                          <select 
-                            value={selectedClientId}
-                            onChange={(e) => setSelectedClientId(e.target.value)}
-                            className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-active-green/20 transition-all outline-none"
-                          >
-                            <option value="">Search existing clients...</option>
-                            {clients.map(c => (
-                              <option key={c.id} value={c.id}>{c.name} ({c.passportID})</option>
-                            ))}
-                          </select>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </section>
-
-                  {/* Section 2: Travel Info */}
-                  <section className="space-y-4">
-                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">2. Travel Info (Where and When?)</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="relative">
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Destination Country</label>
-                        <div className="relative">
-                          <input 
-                            type="text"
-                            placeholder="Search country..."
-                            value={newVisaData.countrySearch}
-                            onChange={(e) => setNewVisaData({ ...newVisaData, countrySearch: e.target.value })}
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-active-green/20 transition-all"
-                          />
-                          {newVisaData.countrySearch && newVisaData.destinationCountry !== newVisaData.countrySearch && (
-                            <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto custom-scrollbar">
-                              {COUNTRIES.filter(c => c.name.toLowerCase().includes(newVisaData.countrySearch.toLowerCase())).map(country => (
-                                <button
-                                  key={country.code}
-                                  onClick={() => setNewVisaData({ ...newVisaData, destinationCountry: country.name, countrySearch: country.name })}
-                                  className="w-full px-4 py-2 text-left text-sm hover:bg-slate-50 transition-colors flex items-center justify-between"
-                                >
-                                  <span>{country.name}</span>
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase">{country.code}</span>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Visa Type</label>
-                        <select 
-                          value={newVisaData.visaType}
-                          onChange={(e) => setNewVisaData({ ...newVisaData, visaType: e.target.value })}
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-active-green/20 transition-all"
-                        >
-                          <option>Schengen - Tourist</option>
-                          <option>Schengen - Business</option>
-                          <option>UK Standard Visitor</option>
-                          <option>USA B1/B2</option>
-                          <option>Ethiopia - Business (BRV)</option>
-                          <option>Ethiopia - Investment (IV)</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Intended Entry Date</label>
-                        <input 
-                          type="date"
-                          value={newVisaData.intendedEntryDate}
-                          onChange={(e) => setNewVisaData({ ...newVisaData, intendedEntryDate: e.target.value })}
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-active-green/20 transition-all"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Point of Entry</label>
-                        <input 
-                          type="text"
-                          value={newVisaData.pointOfEntry}
-                          onChange={(e) => setNewVisaData({ ...newVisaData, pointOfEntry: e.target.value })}
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-active-green/20 transition-all"
-                        />
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* Section 3: Submission Tracking */}
-                  <section className="space-y-4">
-                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">3. Submission Tracking (Embassy & Deadlines)</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Document Deadline</label>
-                        <input 
-                          type="date" 
-                          value={newVisaData.documentDeadline}
-                          onChange={(e) => setNewVisaData({ ...newVisaData, documentDeadline: e.target.value })}
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-active-green/20" 
-                        />
-                      </div>
-                      <div className="flex flex-col justify-end gap-2">
-                        <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                          <input 
-                            type="checkbox" 
-                            id="passportReq" 
-                            checked={newVisaData.passportRequired}
-                            onChange={(e) => setNewVisaData({ ...newVisaData, passportRequired: e.target.checked })}
-                            className="w-4 h-4 rounded border-slate-300 text-active-green focus:ring-active-green" 
-                          />
-                          <label htmlFor="passportReq" className="text-xs font-medium text-slate-700">Physical Passport Required</label>
-                        </div>
-                        <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                          <input 
-                            type="checkbox" 
-                            id="yellowFever" 
-                            checked={newVisaData.yellowFeverRequired}
-                            onChange={(e) => setNewVisaData({ ...newVisaData, yellowFeverRequired: e.target.checked })}
-                            className="w-4 h-4 rounded border-slate-300 text-active-green focus:ring-active-green" 
-                          />
-                          <label htmlFor="yellowFever" className="text-xs font-medium text-slate-700">Yellow Fever Cert Required</label>
-                        </div>
-                      </div>
-                    </div>
-                  </section>
-                </div>
-              </div>
-
-              <div className="p-8 bg-slate-50/50 border-t border-slate-100">
-                <button 
-                  onClick={handleCreateVisaApplication}
-                  className="w-full py-4 bg-active-green text-white rounded-2xl font-bold text-sm shadow-lg shadow-active-green/20 hover:bg-active-green/90 transition-all flex items-center justify-center gap-2"
-                >
-                  Enroll Application
-                  <Check size={18} />
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* Manage Application / Document Vault Modal */}
       <AnimatePresence>
@@ -1150,6 +824,14 @@ export const VisaEventsView: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+
+      <NewVisaApplicationDrawer
+        isOpen={isNewVisaDrawerOpen}
+        onClose={() => setIsNewVisaDrawerOpen(false)}
+        clients={clients}
+        staffOptions={staffOptions}
+        addVisa={addVisa}
+      />
     </div>
   );
 };

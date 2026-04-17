@@ -310,10 +310,14 @@ const DashboardView = () => {
                     <div className="text-right">
                       <p className="text-base font-black text-slate-900">{new Date(visa.documentDeadline).toLocaleDateString()}</p>
                       <span className={`text-[10px] font-black uppercase tracking-widest mt-1 px-2 py-0.5 rounded-md ${
-                        visa.status === 'COLLECTING_DOCS' ? 'bg-amber-500/10 text-amber-600' : 
-                        visa.status === 'PROCESSING' ? 'bg-indigo-500/10 text-indigo-600' : 'text-slate-400'
+                        visa.status === 'GATHERING_DOCS' ? 'bg-amber-500/10 text-amber-600' :
+                        visa.status === 'READY_TO_SUBMIT' ? 'bg-sky-500/10 text-sky-600' :
+                        visa.status === 'IN_PROCESSING' ? 'bg-indigo-500/10 text-indigo-600' :
+                        visa.status === 'ACTION_REQUIRED' ? 'bg-rose-500/10 text-rose-600' :
+                        visa.status === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-600' :
+                        visa.status === 'REJECTED' ? 'bg-rose-700/10 text-rose-700' : 'text-slate-400'
                       }`}>
-                        {visa.status.replace('_', ' ')}
+                        {visa.status.replace(/_/g, ' ')}
                       </span>
                     </div>
                   </div>

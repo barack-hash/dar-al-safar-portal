@@ -5,13 +5,36 @@ import { VisaApplication, EventBooking, VisaStatus, EventStatus, VisaDocumentSta
 import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { visaFromRow, visaToInsert, type VisaRow } from '../lib/supabaseMaps';
 
+function migrateLegacyVisaStatus(status: string): VisaStatus {
+  const map: Record<string, VisaStatus> = {
+    COLLECTING_DOCS: 'GATHERING_DOCS',
+    APPOINTMENT_BOOKED: 'READY_TO_SUBMIT',
+    PROCESSING: 'IN_PROCESSING',
+    GATHERING_DOCS: 'GATHERING_DOCS',
+    READY_TO_SUBMIT: 'READY_TO_SUBMIT',
+    IN_PROCESSING: 'IN_PROCESSING',
+    ACTION_REQUIRED: 'ACTION_REQUIRED',
+    APPROVED: 'APPROVED',
+    REJECTED: 'REJECTED',
+  };
+  return map[status] ?? 'GATHERING_DOCS';
+}
+
+function normalizeVisa(v: VisaApplication): VisaApplication {
+  return {
+    ...v,
+    status: migrateLegacyVisaStatus(v.status as string),
+    documents: Array.isArray(v.documents) ? v.documents : [],
+  };
+}
+
 const DEFAULT_VISAS: VisaApplication[] = [
   {
     id: 'v1',
     clientId: '1',
     destinationCountry: 'France',
     visaType: 'Schengen Tourist',
-    status: 'PROCESSING',
+    status: 'IN_PROCESSING',
     submissionDate: '2026-03-20',
     documentDeadline: '2026-03-28',
     passportRequired: true,
@@ -26,9 +49,9 @@ const DEFAULT_VISAS: VisaApplication[] = [
   {
     id: 'v2',
     clientId: '2',
-    destinationCountry: 'UAE',
+    destinationCountry: 'United Arab Emirates',
     visaType: 'Dubai e-Visa',
-    status: 'COLLECTING_DOCS',
+    status: 'GATHERING_DOCS',
     submissionDate: '2026-03-22',
     documentDeadline: '2026-03-26',
     passportRequired: true,
@@ -45,7 +68,8 @@ export function useConcierge() {
   const supabaseMode = isSupabaseConfigured();
   const [visasLocal, setVisasLocal] = useLocalStorage<VisaApplication[]>('darsafar_visas', DEFAULT_VISAS);
   const [visasRemote, setVisasRemote] = useState<VisaApplication[]>([]);
-  const visas = supabaseMode ? visasRemote : visasLocal;
+  const visasRaw = supabaseMode ? visasRemote : visasLocal;
+  const visas = useMemo(() => visasRaw.map(normalizeVisa), [visasRaw]);
 
   const [events, setEvents] = useLocalStorage<EventBooking[]>('darsafar_events', [
     {
@@ -77,7 +101,7 @@ export function useConcierge() {
         const { data, error } = await sb.from('visas').select('*').returns<VisaRow[]>();
         if (cancelled) return;
         if (error) throw error;
-        setVisasRemote((data ?? []).map(visaFromRow));
+        setVisasRemote((data ?? []).map((r) => normalizeVisa(visaFromRow(r as VisaRow))));
       } catch (e) {
         console.error(e);
         toast.error('Could not load visas from Supabase', {
@@ -210,7 +234,10 @@ export function useConcierge() {
   );
 
   const urgentVisas = useMemo(() => {
-    return visas.filter((v) => v.status === 'COLLECTING_DOCS' || v.status === 'PROCESSING');
+    return visas.filter(
+      (v) =>
+        v.status === 'GATHERING_DOCS' || v.status === 'IN_PROCESSING' || v.status === 'ACTION_REQUIRED'
+    );
   }, [visas]);
 
   return {
