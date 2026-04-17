@@ -19,11 +19,12 @@ import { useStaff } from '../hooks/useStaff';
 import { useTicketing } from '../hooks/useTicketing';
 import { useConcierge } from '../hooks/useConcierge';
 import { useCashLog } from '../hooks/useCashLog';
+import { useFormalLedger } from '../hooks/useFormalLedger';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { Tab } from '../components/Layout';
 import { calculatePayroll } from '../lib/payrollEngine';
 import { toast } from 'sonner';
-import { VisaApplication, EventBooking, VisaStatus, EventStatus, CashLogEntry } from '../types';
+import { VisaApplication, EventBooking, VisaStatus, EventStatus, CashLogEntry, FormalLedgerEntry } from '../types';
 import { getDefaultPersistedAppSettings, normalizePersistedAppSettings } from '../lib/appSettings';
 import {
   FALLBACK_EXCHANGE_RATES,
@@ -35,6 +36,7 @@ import {
   type ExchangeRates,
   type ExchangeRatesSource,
 } from '../lib/currencyService';
+import { isSupabaseConfigured } from '../lib/supabaseClient';
 
 interface UIContextType {
   searchQuery: string;
@@ -133,6 +135,9 @@ interface ClientsContextType {
   addCashLogEntry: (entry: Omit<CashLogEntry, 'id'>) => Promise<CashLogEntry>;
   updateCashLogEntry: (id: string, updates: Partial<CashLogEntry>) => void;
   deleteCashLogEntry: (id: string) => void;
+  formalLedger: FormalLedgerEntry[];
+  refreshFormalLedger: () => Promise<void>;
+  promoteCashLogEntry: (cashLogId: string) => Promise<void>;
 }
 
 const UIContext = createContext<UIContextType | undefined>(undefined);
@@ -297,6 +302,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     visas, events, addVisa, updateVisa, updateVisaStatus, updateVisaDocument, addEvent, updateEventStatus, urgentVisas
   } = useConcierge();
   const { cashLog, addCashLogEntry, updateCashLogEntry, deleteCashLogEntry } = useCashLog();
+  const { formalLedger, refreshFormalLedger, promoteCashLogEntry, insertTicketingIncomePending } =
+    useFormalLedger();
 
   const issueTicket = useCallback(
     async (id: string, payload: { ticketNumber: string }) => {
@@ -313,21 +320,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return;
       }
 
-      addTransaction({
-        date: new Date().toISOString().split('T')[0],
-        description: `Ticket Issued: PNR ${booking.pnr} #${ticketNumber}`,
-        amount: booking.pricing.markup,
-        currency: booking.pricing.currency,
-        type: 'INCOME',
-        category: 'Flight Sales Markup',
-        isTaxable: true,
-      });
+      const formalPosted = await insertTicketingIncomePending(booking, ticketNumber);
+      const supabaseOn = isSupabaseConfigured();
 
       toast.success('Ticket Issued', {
-        description: 'Markup recorded in Accounting Ledger.',
+        description: !supabaseOn
+          ? 'Ticket saved. Connect Supabase to sync the formal ledger.'
+          : formalPosted
+            ? 'Markup posted to formal ledger (pending verification).'
+            : 'Ticket saved. Formal ledger post did not complete — check Supabase or try again.',
       });
     },
-    [bookings, originalIssueTicket, addTransaction]
+    [bookings, originalIssueTicket, insertTicketingIncomePending]
   );
 
   const cancelBooking = useCallback(
@@ -535,7 +539,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     cashLog,
     addCashLogEntry,
     updateCashLogEntry,
-    deleteCashLogEntry
+    deleteCashLogEntry,
+    formalLedger,
+    refreshFormalLedger,
+    promoteCashLogEntry,
   }), [
     clients, addClient, updateClient, deleteClient,
     invoices, addInvoice, updateInvoiceStatus, deleteInvoice,
@@ -545,7 +552,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     employees, addEmployee, updateEmployee, deleteEmployee, generatePayroll, generateMonthlyReport,
     bookings, createBooking, issueTicket, cancelBooking, expiringHolds, ticketingStatsDisplay,
     visas, events, addVisa, updateVisa, updateVisaStatus, updateVisaDocument, addEvent, updateEventStatus, urgentVisas,
-    cashLog, addCashLogEntry, updateCashLogEntry, deleteCashLogEntry
+    cashLog, addCashLogEntry, updateCashLogEntry, deleteCashLogEntry,
+    formalLedger, refreshFormalLedger, promoteCashLogEntry,
   ]);
 
   return (

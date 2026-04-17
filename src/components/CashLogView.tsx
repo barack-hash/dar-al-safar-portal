@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { Plus, Search, Download, ArrowUpRight, ArrowDownRight, Calendar, BellRing } from 'lucide-react';
+import { Plus, Search, Download, ArrowUpRight, ArrowDownRight, Calendar, BellRing, BookMarked } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
 import { getRunningBalance } from '../hooks/useCashLog';
 import { QuickCashEntryDrawer } from './cash/QuickCashEntryDrawer';
@@ -13,8 +13,19 @@ export const CashLogView: React.FC = () => {
     isLogCashEntryModalOpen,
     setIsLogCashEntryModalOpen,
     currency,
+    formalLedger,
+    promoteCashLogEntry,
   } = useAppContext();
   const [searchQuery, setSearchQuery] = useState('');
+  const [promotingId, setPromotingId] = useState<string | null>(null);
+
+  const promotedCashLogIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const e of formalLedger) {
+      if (e.sourceType === 'CASH_LOG' && e.sourceId) s.add(e.sourceId);
+    }
+    return s;
+  }, [formalLedger]);
 
   const filteredLog = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -129,6 +140,8 @@ export const CashLogView: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
               {filteredLog.map((entry) => {
                 const positive = entry.transactionType !== 'EXPENSE';
+                const canPromote =
+                  entry.isFormalAccountingReady && !promotedCashLogIds.has(entry.id);
                 return (
                   <motion.div
                     key={entry.id}
@@ -177,6 +190,24 @@ export const CashLogView: React.FC = () => {
                         <BellRing size={12} />
                         Repayment Reminder: {entry.dueDate}
                       </div>
+                    )}
+                    {canPromote && (
+                      <button
+                        type="button"
+                        disabled={promotingId === entry.id}
+                        onClick={async () => {
+                          setPromotingId(entry.id);
+                          try {
+                            await promoteCashLogEntry(entry.id);
+                          } finally {
+                            setPromotingId(null);
+                          }
+                        }}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-900/90 text-white text-xs font-bold hover:bg-slate-900 disabled:opacity-60 transition-all"
+                      >
+                        <BookMarked size={16} />
+                        {promotingId === entry.id ? 'Promoting…' : 'Promote to Ledger'}
+                      </button>
                     )}
                   </motion.div>
                 );

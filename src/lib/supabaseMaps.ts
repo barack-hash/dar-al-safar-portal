@@ -9,7 +9,7 @@ import type {
   InvoiceItem,
   VisaApplication,
 } from '../types';
-import type { CashLogEntry } from '../types';
+import type { CashLogEntry, FormalLedgerEntry } from '../types';
 
 /** DB row shapes (public schema) — keep in sync with supabase/migrations. */
 
@@ -67,6 +67,68 @@ export interface VisaRow {
   external_tracking_id?: string | null;
   processing_center?: string | null;
   expected_approval_date?: string | null;
+}
+
+export interface FormalLedgerRow {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  description: string;
+  category: string;
+  currency: string;
+  gross_amount: number;
+  vat_amount: number;
+  wht_amount: number;
+  net_amount: number;
+  status: string;
+  source_type: string;
+  source_id: string | null;
+}
+
+export function formalLedgerFromRow(r: FormalLedgerRow): FormalLedgerEntry {
+  const cur = r.currency;
+  const currency = (['ETB', 'USD', 'SAR'].includes(cur) ? cur : 'USD') as FormalLedgerEntry['currency'];
+  return {
+    id: r.id,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    description: r.description,
+    category: r.category as FormalLedgerEntry['category'],
+    currency,
+    grossAmount: Number(r.gross_amount),
+    vatAmount: Number(r.vat_amount),
+    whtAmount: Number(r.wht_amount),
+    netAmount: Number(r.net_amount),
+    status: r.status as FormalLedgerEntry['status'],
+    sourceType: r.source_type as FormalLedgerEntry['sourceType'],
+    sourceId: r.source_id ?? undefined,
+  };
+}
+
+/** Payload for Supabase insert (snake_case). Omit id to let DB default. */
+export function formalLedgerToInsert(
+  e: Omit<FormalLedgerEntry, 'id' | 'createdAt' | 'updatedAt'> & {
+    id?: string;
+    createdAt?: string;
+    updatedAt?: string;
+  }
+): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    description: e.description,
+    category: e.category,
+    currency: e.currency,
+    gross_amount: e.grossAmount,
+    vat_amount: e.vatAmount,
+    wht_amount: e.whtAmount,
+    net_amount: e.netAmount,
+    status: e.status,
+    source_type: e.sourceType,
+    source_id: e.sourceId ?? null,
+  };
+  if (e.id) row.id = e.id;
+  if (e.createdAt) row.created_at = e.createdAt;
+  if (e.updatedAt) row.updated_at = e.updatedAt;
+  return row;
 }
 
 export interface CashLogRow {

@@ -344,6 +344,26 @@ export interface CapitalInjection {
 export type CashLogCurrency = Extract<Currency, 'ETB' | 'USD'>;
 export type CashLogTransactionType = 'INCOME' | 'EXPENSE' | 'LOAN_REPAYMENT';
 
+export type FormalLedgerCategory = 'Income' | 'Expense' | 'Tax' | 'Transfer';
+export type FormalLedgerStatus = 'PENDING' | 'VERIFIED';
+export type FormalLedgerSourceType = 'TICKETING' | 'CASH_LOG' | 'MANUAL';
+
+export interface FormalLedgerEntry {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  description: string;
+  category: FormalLedgerCategory;
+  currency: Currency;
+  grossAmount: number;
+  vatAmount: number;
+  whtAmount: number;
+  netAmount: number;
+  status: FormalLedgerStatus;
+  sourceType: FormalLedgerSourceType;
+  sourceId?: string;
+}
+
 export interface CashLogEntry {
   id: string;
   amount: number;

@@ -21,7 +21,6 @@ import {
   User,
   Users,
   MoreVertical,
-  Globe,
   Pencil,
   FileText as FileIcon
 } from 'lucide-react';
@@ -44,18 +43,18 @@ import {
   FundSource,
   KYCStatus,
   BankAccount,
-  Currency
+  Currency,
+  FormalLedgerEntry,
 } from '../types';
 import { COUNTRIES } from '../constants/countries';
 import { toast } from 'sonner';
 
-interface LedgerTableProps {
-  transactions: Transaction[];
+interface FormalLedgerTableProps {
+  entries: FormalLedgerEntry[];
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   currency: Currency;
   convertForDisplay: (amount: number, sourceCurrency: Currency) => number;
-  voidTransaction: (id: string) => void;
 }
 
 interface MetricStat {
@@ -68,47 +67,57 @@ interface MetricStat {
   isCurrency?: boolean;
 }
 
-const LedgerTable: React.FC<LedgerTableProps> = ({ 
-  transactions, 
-  searchQuery, 
+function currencySymbol(c: Currency): string {
+  return c === 'USD' ? '$' : c === 'SAR' ? 'SR' : 'Br';
+}
+
+const FormalLedgerTable: React.FC<FormalLedgerTableProps> = ({
+  entries,
+  searchQuery,
   setSearchQuery,
-  currency, 
+  currency,
   convertForDisplay,
-  voidTransaction 
 }) => {
   const [pageSize, setPageSize] = useState(20);
-  const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
 
-  const filteredTransactions = useMemo(() => 
-    transactions.filter(tx => 
-      tx.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tx.category.toLowerCase().includes(searchQuery.toLowerCase())
-    ),
-  [transactions, searchQuery]);
+  const filteredEntries = useMemo(
+    () =>
+      entries.filter(
+        (e) =>
+          e.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          e.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          e.sourceType.toLowerCase().includes(searchQuery.toLowerCase())
+      ),
+    [entries, searchQuery]
+  );
 
-  const visibleTransactions = useMemo(() => 
-    filteredTransactions.slice(0, pageSize),
-  [filteredTransactions, pageSize]);
+  const visibleEntries = useMemo(() => filteredEntries.slice(0, pageSize), [filteredEntries, pageSize]);
 
   return (
-    <div className="bg-white/50 backdrop-blur-md rounded-[2.5rem] border border-white/20 shadow-sm overflow-hidden">
+    <div className="glass-panel bg-white/50 backdrop-blur-md rounded-[2.5rem] border border-white/25 shadow-sm overflow-hidden">
       <div className="p-8 border-b border-black/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <h3 className="text-xl font-bold text-slate-900">General Ledger Entries</h3>
+        <h3 className="text-xl font-bold text-slate-900">Formal General Ledger</h3>
         <div className="flex gap-4 items-center">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Search ledger..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-12 pr-4 py-2.5 bg-white border border-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-active-green/20 transition-all"
+              className="pl-12 pr-4 py-2.5 bg-white/80 border border-white/40 rounded-xl text-sm focus:ring-2 focus:ring-active-green/20 transition-all"
             />
           </div>
-          <button className="p-2.5 bg-white border border-slate-100 rounded-xl text-slate-600 hover:bg-slate-50 transition-all">
+          <button
+            type="button"
+            className="p-2.5 bg-white/80 border border-white/40 rounded-xl text-slate-600 hover:bg-white transition-all"
+          >
             <Filter size={20} />
           </button>
-          <button className="p-2.5 bg-white border border-slate-100 rounded-xl text-slate-600 hover:bg-slate-50 transition-all">
+          <button
+            type="button"
+            className="p-2.5 bg-white/80 border border-white/40 rounded-xl text-slate-600 hover:bg-white transition-all"
+          >
             <Download size={20} />
           </button>
         </div>
@@ -120,92 +129,87 @@ const LedgerTable: React.FC<LedgerTableProps> = ({
             <tr className="bg-slate-50/50">
               <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Date</th>
               <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Description</th>
-              <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Type</th>
-              <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Gross Amount</th>
-              <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">VAT (15%)</th>
-              <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Net Amount</th>
-              <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
+              <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Category</th>
+              <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
+              <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Source</th>
+              <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Gross</th>
+              <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">VAT</th>
+              <th className="px-8 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Net</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-black/5">
-            {visibleTransactions.map((tx) => (
-              <tr key={tx.id} className="hover:bg-slate-50/50 transition-all group">
-                <td className="px-8 py-5 text-sm font-medium text-slate-500">{tx.date}</td>
-                <td className="px-8 py-5">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-bold text-slate-900">{tx.description}</span>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{tx.category}</span>
-                  </div>
-                </td>
-                <td className="px-8 py-5">
-                  <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${
-                    tx.type === 'INCOME' ? 'bg-emerald-500/10 text-emerald-600' : 
-                    tx.type === 'EQUITY' ? 'bg-blue-500/10 text-blue-600' :
-                    'bg-rose-500/10 text-rose-600'
-                  }`}>
-                    {tx.type}
-                  </span>
-                </td>
-                <td className="px-8 py-5 text-sm font-bold text-slate-900 text-right">
-                  {currency === 'USD' ? '$' : currency === 'SAR' ? 'SR' : 'Br'}
-                  {convertForDisplay(tx.amount, tx.currency).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                </td>
-                <td className="px-8 py-5 text-sm font-bold text-amber-600 text-right">
-                  {currency === 'USD' ? '$' : currency === 'SAR' ? 'SR' : 'Br'}
-                  {convertForDisplay(tx.taxDetails.vat, tx.currency).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                </td>
-                <td className="px-8 py-5 text-sm font-bold text-slate-900 text-right">
-                  {currency === 'USD' ? '$' : currency === 'SAR' ? 'SR' : 'Br'}
-                  {convertForDisplay(tx.amount - tx.taxDetails.vat, tx.currency).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                </td>
-                <td className="px-8 py-5 text-right relative">
-                  <button 
-                    onClick={() => setActiveDropdownId(activeDropdownId === tx.id ? null : tx.id)}
-                    className={`p-2 rounded-lg transition-all ${activeDropdownId === tx.id ? 'bg-slate-100 text-slate-900' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-100'}`}
-                  >
-                    <MoreVertical size={16} />
-                  </button>
-
-                  {activeDropdownId === tx.id && (
-                    <>
-                      <div 
-                        className="fixed inset-0 z-10" 
-                        onClick={() => setActiveDropdownId(null)}
-                      />
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        className="absolute right-8 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-20"
-                      >
-                        <button
-                          onClick={() => {
-                            if (window.confirm('Are you sure you want to void this transaction? This will create a reversal entry.')) {
-                              voidTransaction(tx.id);
-                            }
-                            setActiveDropdownId(null);
-                          }}
-                          className="w-full px-4 py-2 text-left text-sm font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2"
-                        >
-                          <AlertCircle size={14} className="text-red-400" />
-                          Void Transaction
-                        </button>
-                      </motion.div>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {visibleEntries.map((e) => {
+              const dateStr = e.createdAt.includes('T') ? e.createdAt.split('T')[0] : e.createdAt.slice(0, 10);
+              return (
+                <tr key={e.id} className="hover:bg-slate-50/50 transition-all group">
+                  <td className="px-8 py-5 text-sm font-medium text-slate-500 whitespace-nowrap">{dateStr}</td>
+                  <td className="px-8 py-5">
+                    <span className="text-sm font-bold text-slate-900">{e.description}</span>
+                  </td>
+                  <td className="px-8 py-5">
+                    <span
+                      className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${
+                        e.category === 'Income'
+                          ? 'bg-emerald-500/10 text-emerald-600'
+                          : e.category === 'Expense'
+                            ? 'bg-rose-500/10 text-rose-600'
+                            : e.category === 'Tax'
+                              ? 'bg-amber-500/10 text-amber-700'
+                              : 'bg-slate-500/10 text-slate-600'
+                      }`}
+                    >
+                      {e.category}
+                    </span>
+                  </td>
+                  <td className="px-8 py-5">
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                        e.status === 'VERIFIED'
+                          ? 'bg-emerald-500/15 text-emerald-700'
+                          : 'bg-amber-500/15 text-amber-800'
+                      }`}
+                    >
+                      {e.status}
+                    </span>
+                  </td>
+                  <td className="px-8 py-5">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                      {e.sourceType.replace('_', ' ')}
+                    </span>
+                  </td>
+                  <td className="px-8 py-5 text-sm font-bold text-slate-900 text-right whitespace-nowrap">
+                    {currencySymbol(currency)}
+                    {convertForDisplay(e.grossAmount, e.currency).toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                    })}
+                  </td>
+                  <td className="px-8 py-5 text-sm font-bold text-amber-600 text-right whitespace-nowrap">
+                    {currencySymbol(currency)}
+                    {convertForDisplay(e.vatAmount, e.currency).toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                    })}
+                  </td>
+                  <td className="px-8 py-5 text-sm font-bold text-slate-900 text-right whitespace-nowrap">
+                    {currencySymbol(currency)}
+                    {convertForDisplay(e.netAmount, e.currency).toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                    })}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
-      {filteredTransactions.length > pageSize && (
+      {filteredEntries.length > pageSize && (
         <div className="p-8 border-t border-black/5 flex justify-center">
-          <button 
-            onClick={() => setPageSize(prev => prev + 20)}
+          <button
+            type="button"
+            onClick={() => setPageSize((prev) => prev + 20)}
             className="px-8 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all active:scale-95"
           >
-            Load More Transactions
+            Load more
           </button>
         </div>
       )}
@@ -344,11 +348,8 @@ export const AccountingView: React.FC = () => {
   const { 
     clients, 
     addInvoice, 
-    transactions, 
     addTransaction, 
-    accountingStats,
     generateMonthlyReport,
-    voidTransaction,
     investors,
     addInvestor,
     updateInvestor,
@@ -360,7 +361,8 @@ export const AccountingView: React.FC = () => {
     addBankAccount,
     updateBankAccount,
     deleteBankAccount,
-    accountBalances
+    accountBalances,
+    formalLedger,
   } = useClientsContext();
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
@@ -387,6 +389,39 @@ export const AccountingView: React.FC = () => {
   const monthlyReport = useMemo(() => 
     generateMonthlyReport(reportDate.month, reportDate.year),
   [generateMonthlyReport, reportDate]);
+
+  const verifiedFormal = useMemo(
+    () => formalLedger.filter((e) => e.status === 'VERIFIED'),
+    [formalLedger]
+  );
+
+  const formalDisplayStats = useMemo(() => {
+    let netProfit = 0;
+    let operatingExpenses = 0;
+    let vatPayable = 0;
+    let whtPayable = 0;
+    const treasury: Record<Currency, number> = { ETB: 0, USD: 0, SAR: 0 };
+
+    for (const e of verifiedFormal) {
+      vatPayable += convertForDisplay(e.vatAmount, e.currency);
+      whtPayable += convertForDisplay(e.whtAmount, e.currency);
+      const netConv = convertForDisplay(e.netAmount, e.currency);
+
+      if (e.category === 'Income') {
+        netProfit += netConv;
+        treasury[e.currency] += e.netAmount;
+      } else if (e.category === 'Expense') {
+        netProfit -= netConv;
+        operatingExpenses += netConv;
+        treasury[e.currency] -= e.netAmount;
+      } else if (e.category === 'Tax') {
+        netProfit -= netConv;
+        treasury[e.currency] -= e.netAmount;
+      }
+    }
+
+    return { netProfit, operatingExpenses, vatPayable, whtPayable, treasury };
+  }, [verifiedFormal, convertForDisplay]);
 
   const exportToCSV = () => {
     const headers = ['Date', 'Description', 'Type', 'Category', 'Amount', 'VAT', 'WHT'];
@@ -417,37 +452,37 @@ export const AccountingView: React.FC = () => {
   };
 
   const stats: MetricStat[] = [
-    { 
-      label: 'Net Profit', 
-      value: accountingStats.netProfit, 
-      icon: TrendingUp, 
-      color: 'text-emerald-500', 
+    {
+      label: 'Net Profit',
+      value: formalDisplayStats.netProfit,
+      icon: TrendingUp,
+      color: 'text-emerald-500',
       bg: 'bg-emerald-500/10',
-      trend: '+12.5%'
+      trend: 'Verified formal ledger',
     },
-    { 
-      label: 'Operating Expenses', 
-      value: accountingStats.totalExpenses, 
-      icon: TrendingDown, 
-      color: 'text-rose-500', 
+    {
+      label: 'Operating Expenses',
+      value: formalDisplayStats.operatingExpenses,
+      icon: TrendingDown,
+      color: 'text-rose-500',
       bg: 'bg-rose-500/10',
-      trend: `Cash: ${currency === 'USD' ? '$' : currency === 'SAR' ? 'SR' : 'Br'}${accountingStats.totalCashOutflow.toLocaleString()}`
+      trend: 'Verified expenses',
     },
-    { 
-      label: 'VAT Payable (15%)', 
-      value: accountingStats.vatLiability, 
-      icon: PieChart, 
-      color: 'text-amber-500', 
+    {
+      label: 'VAT (accrued)',
+      value: formalDisplayStats.vatPayable,
+      icon: PieChart,
+      color: 'text-amber-500',
       bg: 'bg-amber-500/10',
-      trend: 'Ethiopia VAT'
+      trend: 'From verified posts',
     },
-    { 
-      label: 'WHT Payable', 
-      value: accountingStats.whtLiability, 
-      icon: CreditCard, 
-      color: 'text-indigo-500', 
+    {
+      label: 'WHT (accrued)',
+      value: formalDisplayStats.whtPayable,
+      icon: CreditCard,
+      color: 'text-indigo-500',
       bg: 'bg-indigo-500/10',
-      trend: '3% Domestic'
+      trend: 'From verified posts',
     },
   ];
 
@@ -515,109 +550,122 @@ export const AccountingView: React.FC = () => {
         </div>
       </header>
 
-      {/* Treasury Section */}
+      {/* Treasury: net book position from verified formal ledger (per currency) */}
       <section className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
             <Briefcase size={20} className="text-active-green" />
-            Treasury Management
+            Treasury (formal ledger)
           </h3>
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Live Balances</span>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            Verified net by currency
+          </span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {accountBalances.map((account, i) => (
+          {(['ETB', 'USD', 'SAR'] as const).map((cur, i) => (
             <motion.div
-              key={account.id}
+              key={cur}
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: i * 0.1 }}
-              className="relative overflow-hidden group"
+              transition={{ delay: i * 0.08 }}
+              className="glass-panel p-6 rounded-[2rem] border border-white/30 shadow-sm"
             >
-              <div className={`p-6 rounded-[2rem] border border-white/20 shadow-lg transition-all hover:shadow-xl ${
-                account.currency === 'USD' ? 'bg-gradient-to-br from-slate-900 to-slate-800 text-white' :
-                account.currency === 'ETB' ? 'bg-gradient-to-br from-emerald-900 to-emerald-800 text-white' :
-                'bg-gradient-to-br from-indigo-900 to-indigo-800 text-white'
-              }`}>
-                <div className="flex justify-between items-start mb-8">
-                  <div>
-                    <p className="text-[10px] font-bold opacity-60 uppercase tracking-widest">{account.bankName}</p>
-                    <p className="text-sm font-bold mt-1">**** {account.accountNumber}</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{cur} book balance</p>
+              <p className={`text-2xl font-black ${formalDisplayStats.treasury[cur] >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                {currencySymbol(cur)}
+                {formalDisplayStats.treasury[cur].toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </p>
+              <p className="text-xs text-slate-500 mt-3 leading-snug">
+                Sum of verified net amounts (income adds, expenses and tax posts reduce) in {cur}.
+              </p>
+            </motion.div>
+          ))}
+        </div>
+
+        {accountBalances.length > 0 && (
+          <div className="glass-panel rounded-[2rem] border border-white/25 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-bold text-slate-800">Linked bank accounts</h4>
+              <button
+                type="button"
+                onClick={() => setIsBankModalOpen(true)}
+                className="text-xs font-bold text-active-green hover:underline"
+              >
+                Add account
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {accountBalances.map((account) => (
+                <div
+                  key={account.id}
+                  className="relative flex items-center justify-between gap-3 p-4 rounded-2xl bg-white/50 border border-white/30"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-900 truncate">{account.bankName}</p>
+                    <p className="text-[10px] text-slate-500">**** {account.accountNumber}</p>
+                    <p className="text-xs font-bold text-slate-700 mt-1">
+                      {currencySymbol(currency)}
+                      {convertForDisplay(account.currentBalance, account.currency).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                      })}
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="relative">
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveBankDropdown(activeBankDropdown === account.id ? null : account.id);
-                        }}
-                        className="p-2 hover:bg-white/10 rounded-xl transition-all text-white/70 hover:text-white"
-                      >
-                        <MoreVertical size={18} />
-                      </button>
-                      
-                      <AnimatePresence>
-                        {activeBankDropdown === account.id && (
+                  <div className="relative shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveBankDropdown(activeBankDropdown === account.id ? null : account.id);
+                      }}
+                      className="p-2 rounded-xl text-slate-500 hover:bg-white/80"
+                    >
+                      <MoreVertical size={16} />
+                    </button>
+                    <AnimatePresence>
+                      {activeBankDropdown === account.id && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-10"
+                            onClick={() => setActiveBankDropdown(null)}
+                          />
                           <motion.div
-                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                            initial={{ opacity: 0, y: 8, scale: 0.98 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                            className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 overflow-hidden"
+                            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                            className="absolute right-0 top-full mt-1 w-44 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-20 overflow-hidden"
                           >
                             <button
+                              type="button"
                               onClick={() => {
                                 setEditingBank(account);
                                 setActiveBankDropdown(null);
                               }}
-                              className="w-full flex items-center gap-3 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 hover:text-active-green transition-all"
+                              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
                             >
-                              <Pencil size={16} />
-                              Edit Account
+                              <Pencil size={14} />
+                              Edit
                             </button>
                             <button
+                              type="button"
                               onClick={() => {
                                 setDeletingBank(account);
                                 setActiveBankDropdown(null);
                               }}
-                              className="w-full flex items-center gap-3 px-4 py-2 text-sm font-bold text-rose-600 hover:bg-rose-50 transition-all"
+                              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50"
                             >
-                              <Trash2 size={16} />
-                              Delete Account
+                              <Trash2 size={14} />
+                              Remove
                             </button>
                           </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                    <div className="p-2 bg-white/10 rounded-xl">
-                      <CreditCard size={20} />
-                    </div>
+                        </>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </div>
-                <div>
-                  <p className="text-[10px] font-bold opacity-60 uppercase tracking-widest">Available Balance</p>
-                  <h4 className="text-2xl font-bold mt-1">
-                    {currency === 'USD' ? '$' : currency === 'SAR' ? 'SR' : 'Br'}
-                    {convertForDisplay(account.currentBalance, account.currency).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </h4>
-                </div>
-                
-                {/* Decorative Elements */}
-                <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-110 transition-transform">
-                  <Globe size={120} />
-                </div>
-              </div>
-            </motion.div>
-          ))}
-          
-          <button 
-            onClick={() => setIsBankModalOpen(true)}
-            className="flex flex-col items-center justify-center p-6 rounded-[2rem] border-2 border-dashed border-slate-200 hover:border-active-green hover:bg-active-green/5 transition-all group"
-          >
-            <div className="p-3 bg-slate-100 rounded-2xl text-slate-400 group-hover:bg-active-green group-hover:text-white transition-all">
-              <Plus size={24} />
+              ))}
             </div>
-            <p className="text-sm font-bold text-slate-500 group-hover:text-active-green mt-4">Link New Account</p>
-          </button>
-        </div>
+          </div>
+        )}
       </section>
 
       {/* Stats Grid */}
@@ -732,13 +780,12 @@ export const AccountingView: React.FC = () => {
         />
       ) : activeTab === 'ledger' ? (
         <>
-          <LedgerTable 
-            transactions={transactions}
+          <FormalLedgerTable
+            entries={formalLedger}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             currency={currency}
             convertForDisplay={convertForDisplay}
-            voidTransaction={voidTransaction}
           />
 
           {editingBank && (
