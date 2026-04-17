@@ -13,6 +13,10 @@ type AuthContextValue = {
   profile: LoadedSupabaseProfile | null;
   /** True while fetching `profiles` after a session exists. */
   profileLoading: boolean;
+  /** True when invite/recovery URL requires the user to set a password before proceeding. */
+  requiresPasswordUpdate: boolean;
+  /** Clears invite/recovery hash state after successful password update. */
+  clearPasswordUpdateRequirement: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -22,7 +26,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(() => isSupabaseConfigured());
   const [profile, setProfile] = useState<LoadedSupabaseProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [requiresPasswordUpdate, setRequiresPasswordUpdate] = useState(false);
   const loadSeq = useRef(0);
+
+  const hasPasswordResetHash = () => {
+    if (typeof window === 'undefined') return false;
+    const hash = window.location.hash.toLowerCase();
+    return hash.includes('type=invite') || hash.includes('type=recovery');
+  };
+
+  const clearPasswordUpdateRequirement = () => {
+    if (typeof window !== 'undefined' && window.location.hash) {
+      window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+    }
+    setRequiresPasswordUpdate(false);
+  };
 
   useEffect(() => {
     if (!isSupabaseConfigured()) {
@@ -34,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const sb = getSupabase();
+    setRequiresPasswordUpdate(hasPasswordResetHash());
 
     const applySessionAndProfile = async (s: Session | null) => {
       const seq = ++loadSeq.current;
@@ -72,6 +91,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = sb.auth.onAuthStateChange((event: AuthChangeEvent, s) => {
+      if (hasPasswordResetHash()) {
+        setRequiresPasswordUpdate(true);
+      }
+      if (event === 'PASSWORD_RECOVERY') {
+        setRequiresPasswordUpdate(true);
+      }
       if (event === 'TOKEN_REFRESHED') {
         setSession(s);
         return;
@@ -85,8 +110,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ session, loading, profile, profileLoading }),
-    [session, loading, profile, profileLoading]
+    () => ({
+      session,
+      loading,
+      profile,
+      profileLoading,
+      requiresPasswordUpdate,
+      clearPasswordUpdateRequirement,
+    }),
+    [session, loading, profile, profileLoading, requiresPasswordUpdate]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

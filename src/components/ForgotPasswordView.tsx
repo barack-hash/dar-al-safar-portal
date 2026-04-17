@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Mail, Lock, LogIn } from 'lucide-react';
+import { ArrowLeft, Mail, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
 
-export const LoginView: React.FC = () => {
+export const ForgotPasswordView: React.FC = () => {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
@@ -31,34 +30,27 @@ export const LoginView: React.FC = () => {
       });
       return;
     }
-    if (!email.trim() || !password) {
-      toast.error('Enter email and password');
+    if (!email.trim()) {
+      toast.error('Enter your email');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const { error } = await getSupabase().auth.signInWithPassword({
-        email: email.trim(),
-        password,
+      const { error } = await getSupabase().auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: window.location.origin,
       });
       if (error) {
         if (hasExpiredOrInvalidLinkMessage(error.message)) {
-          toast.error('Sign in failed', {
+          toast.error('Could not send reset email', {
             description: 'This link has expired or is invalid. Please request a new one.',
           });
           return;
         }
-        const wrongCreds =
-          error.message === 'Invalid login credentials' ||
-          /invalid login credentials/i.test(error.message);
-        toast.error('Sign in failed', {
-          description: wrongCreds ? 'Email or password is incorrect.' : error.message,
-        });
+        toast.error('Could not send reset email', { description: error.message });
         return;
       }
-      toast.success('Signed in successfully');
-      navigate('/', { replace: true });
+      toast.success('Check your email for the reset link');
     } finally {
       setIsSubmitting(false);
     }
@@ -79,23 +71,21 @@ export const LoginView: React.FC = () => {
       >
         <div className="glass-panel rounded-3xl border-white/30 shadow-2xl p-8 sm:p-10">
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-              Dar Al <span className="text-emerald-500">Safar</span>
-            </h1>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Reset Password</h1>
             <p className="text-xs uppercase tracking-[0.2em] text-slate-500 font-semibold mt-2">
-              Sign in to continue
+              Enter your account email
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label htmlFor="login-email" className="block text-xs font-semibold text-slate-600 mb-1.5">
+              <label htmlFor="forgot-email" className="block text-xs font-semibold text-slate-600 mb-1.5">
                 Email
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
-                  id="login-email"
+                  id="forgot-email"
                   type="email"
                   autoComplete="email"
                   value={email}
@@ -107,43 +97,25 @@ export const LoginView: React.FC = () => {
               </div>
             </div>
 
-            <div>
-              <label htmlFor="login-password" className="block text-xs font-semibold text-slate-600 mb-1.5">
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  id="login-password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={isSubmitting}
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-white/40 bg-white/50 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                  placeholder="••••••••"
-                />
-              </div>
-            </div>
-
             <button
               type="submit"
               disabled={isSubmitting}
               className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-emerald-500 text-white text-sm font-semibold shadow-lg shadow-emerald-500/25 hover:bg-emerald-600 disabled:opacity-60 disabled:pointer-events-none transition-colors"
             >
-              <LogIn className="w-4 h-4" />
-              {isSubmitting ? 'Signing In...' : 'Sign In'}
+              <Send className="w-4 h-4" />
+              {isSubmitting ? 'Sending...' : 'Send Reset Link'}
             </button>
-
-            <div className="text-center pt-1">
-              <Link
-                to="/forgot-password"
-                className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 underline underline-offset-2"
-              >
-                Forgot Password?
-              </Link>
-            </div>
           </form>
+
+          <button
+            type="button"
+            onClick={() => navigate('/login')}
+            disabled={isSubmitting}
+            className="mt-6 w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-white/40 bg-white/40 text-sm font-semibold text-slate-700 hover:bg-white/60 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Login
+          </button>
         </div>
       </motion.div>
     </div>

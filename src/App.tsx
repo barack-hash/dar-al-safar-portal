@@ -4,6 +4,8 @@ import { AppProvider, useAppContext, useUI, useClientsContext } from './contexts
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { UserProvider, useUser } from './contexts/UserContext';
 import { LoginView } from './components/LoginView';
+import { ForgotPasswordView } from './components/ForgotPasswordView';
+import { UpdatePasswordModal } from './components/UpdatePasswordModal';
 import { isSupabaseConfigured } from './lib/supabaseClient';
 import { PRIMARY_TAB_ORDER } from './lib/appSettings';
 import { Layout, Tab } from './components/Layout';
@@ -549,8 +551,30 @@ function LoginRoute() {
   return <LoginView />;
 }
 
-function ProtectedApp() {
+function ForgotPasswordRoute() {
   const { session, loading } = useAuth();
+  if (!isSupabaseConfigured()) {
+    return (
+      <SupabaseConfigScreen message="Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env, then restart the dev server." />
+    );
+  }
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--app-shell-bg)]">
+        <div className="glass-panel rounded-2xl px-8 py-6 text-slate-600 text-sm font-medium border-white/30">
+          Checking session…
+        </div>
+      </div>
+    );
+  }
+  if (session) {
+    return <Navigate to="/" replace />;
+  }
+  return <ForgotPasswordView />;
+}
+
+function ProtectedApp() {
+  const { session, loading, requiresPasswordUpdate, clearPasswordUpdateRequirement } = useAuth();
   if (!isSupabaseConfigured()) {
     return (
       <SupabaseConfigScreen message="Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env, then restart the dev server." />
@@ -573,6 +597,10 @@ function ProtectedApp() {
       <UserProvider session={session}>
         <CommandPalette />
         <AppContent />
+        <UpdatePasswordModal
+          isOpen={requiresPasswordUpdate}
+          onSuccess={clearPasswordUpdateRequirement}
+        />
       </UserProvider>
     </AppProvider>
   );
@@ -585,6 +613,7 @@ export default function App() {
         <Toaster position="top-right" richColors closeButton />
         <Routes>
           <Route path="/login" element={<LoginRoute />} />
+          <Route path="/forgot-password" element={<ForgotPasswordRoute />} />
           <Route path="/*" element={<ProtectedApp />} />
         </Routes>
       </AuthProvider>
