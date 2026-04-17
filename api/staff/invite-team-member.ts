@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { runInviteTeamMember } from '../../lib/inviteTeamMemberCore';
+import { runInviteTeamMember } from '../../src/lib/inviteTeamMemberCore';
 
 function headerString(value: string | string[] | undefined): string | undefined {
   if (value === undefined) return undefined;
