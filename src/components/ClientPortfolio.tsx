@@ -1,5 +1,5 @@
 import React from 'react';
-import { useAppContext, useUI, useClientsContext } from '../contexts/AppContext';
+import { useUI, useClientsContext } from '../contexts/AppContext';
 import { 
   UserPlus, 
   Download, 
@@ -318,17 +318,35 @@ const ClientCard: React.FC<ClientRowProps> = React.memo(({ client, onEdit, onDel
 });
 
 export const ClientPortfolio: React.FC = () => {
-  const { debouncedSearchQuery, currency, openAddClientModal } = useUI();
+  const {
+    searchQuery,
+    setSearchQuery,
+    debouncedSearchQuery,
+    currency,
+    openAddClientModal,
+    clientsSourceFilter,
+    setClientsSourceFilter,
+  } = useUI();
   const { clients, deleteClient, updateClient, cashLog } = useClientsContext();
   const [activeDropdownId, setActiveDropdownId] = React.useState<string | null>(null);
   const [profileClient, setProfileClient] = React.useState<Client | null>(null);
   const currentDate = new Date('2026-03-24');
 
-  const filteredClients = clients.filter(client => 
-    client.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-    client.email.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-    client.passportID.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
-  );
+  const filteredClients = clients.filter((client) => {
+    if (clientsSourceFilter !== null && client.source !== clientsSourceFilter) {
+      return false;
+    }
+    const q = debouncedSearchQuery.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      client.name.toLowerCase().includes(q) ||
+      client.email.toLowerCase().includes(q) ||
+      client.passportID.toLowerCase().includes(q) ||
+      client.contact.toLowerCase().includes(q) ||
+      client.source.toLowerCase().includes(q) ||
+      client.notes.toLowerCase().includes(q)
+    );
+  });
 
   const getCurrencySymbol = (curr: string) => {
     switch (curr) {
@@ -399,13 +417,26 @@ export const ClientPortfolio: React.FC = () => {
             <input 
               type="text" 
               placeholder="Search by name, email or passport..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-12 pr-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-active-green/20 transition-all"
             />
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 text-slate-500 hover:text-slate-900 transition-colors text-sm font-medium">
-            <Filter size={18} />
-            Filters
-          </button>
+          <div className="flex flex-wrap items-center gap-2 justify-end">
+            {clientsSourceFilter !== null && (
+              <button
+                type="button"
+                onClick={() => setClientsSourceFilter(null)}
+                className="flex items-center gap-2 px-4 py-2 text-rose-700 bg-rose-50 border border-rose-100 rounded-xl text-sm font-semibold hover:bg-rose-100/80 transition-colors"
+              >
+                Clear Filter
+              </button>
+            )}
+            <button type="button" className="flex items-center gap-2 px-4 py-2 text-slate-500 hover:text-slate-900 transition-colors text-sm font-medium">
+              <Filter size={18} />
+              Filters
+            </button>
+          </div>
         </div>
 
         <div className="hidden md:block overflow-x-auto">
@@ -460,7 +491,10 @@ export const ClientPortfolio: React.FC = () => {
         </div>
 
         <div className="p-6 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
-          <p className="text-xs text-slate-500 font-medium">Showing 5 of 842 clients</p>
+          <p className="text-xs text-slate-500 font-medium">
+            Showing {filteredClients.length} of {clients.length} clients
+            {clientsSourceFilter !== null ? ` · Source: ${clientsSourceFilter}` : ''}
+          </p>
           <div className="flex items-center gap-2">
             <button className="px-4 py-2 bg-white border border-slate-200 text-slate-400 rounded-xl text-xs font-bold uppercase tracking-widest disabled:opacity-50" disabled>Previous</button>
             <button className="px-4 py-2 bg-white border border-slate-200 text-slate-900 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-50 transition-all">Next</button>

@@ -137,6 +137,35 @@ export function useClients() {
     };
   }, [supabaseMode]);
 
+  useEffect(() => {
+    if (!supabaseMode) return;
+
+    const sb = getSupabase();
+    const channel = sb
+      .channel('clients-insert-sync')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'clients' },
+        (payload) => {
+          const row = payload.new as ClientRow;
+          if (!row?.id) return;
+          setClientsRemote((prev) => {
+            if (prev.some((c) => c.id === row.id)) return prev;
+            try {
+              return [clientFromRow(row), ...prev];
+            } catch {
+              return prev;
+            }
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void sb.removeChannel(channel);
+    };
+  }, [supabaseMode]);
+
   const addClient = useCallback(
     async (newClient: Omit<Client, 'id'>): Promise<Client> => {
       const clientWithId: Client = {

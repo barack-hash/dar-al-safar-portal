@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useUI, useClientsContext } from '../contexts/AppContext';
 import { useUser } from '../contexts/UserContext';
+import { useNotifications } from '../hooks/useNotifications';
 import { Currency, type AppSectionId } from '../types';
 import { toast } from 'sonner';
 import { 
@@ -168,9 +169,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, isOpen, on
 
 export const TopNav: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) => {
   const navigate = useNavigate();
-  const { searchQuery, setSearchQuery, currency, setCurrency, setCurrentTab } = useUI();
+  const { searchQuery, setSearchQuery, currency, setCurrency, setCurrentTab, setClientsSourceFilter } = useUI();
   const { visas, clients, expiringHolds, cashLog } = useClientsContext();
   const { currentUser, roleLabel, logout } = useUser();
+  const { unreadCount, websiteLeadPreviews, markWebsiteLeadsRead, markAllWebsiteLeadsRead } = useNotifications({ clients });
   const [profileOpen, setProfileOpen] = useState(false);
   const [currencyOpen, setCurrencyOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -253,6 +255,8 @@ export const TopNav: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) =
         .slice(0, 10),
     [cashLog]
   );
+
+  const latestWebsiteLeads = useMemo(() => websiteLeadPreviews.slice(0, 5), [websiteLeadPreviews]);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -365,7 +369,11 @@ export const TopNav: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) =
             className="p-2.5 text-slate-600 hover:text-slate-900 hover:bg-white/50 rounded-2xl interactive-tap relative border border-white/15 bg-white/40 backdrop-blur-md transition-all duration-300"
           >
             <Bell size={19} />
-            {hasUnreadPriority && (
+            {unreadCount > 0 ? (
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-black leading-[18px] text-center ring-2 ring-white/90" aria-hidden>
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            ) : hasUnreadPriority && (
               <span className="absolute top-1 right-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white/90" aria-hidden />
             )}
           </button>
@@ -378,6 +386,59 @@ export const TopNav: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) =
                 transition={{ duration: 0.14 }}
                 className="absolute right-0 top-full mt-2 w-[min(22rem,calc(100vw-2rem))] max-h-[min(24rem,70vh)] overflow-hidden flex flex-col z-[70] bg-white/70 backdrop-blur-md border border-white/20 shadow-xl rounded-2xl"
               >
+                <div className="px-4 py-3 border-b border-white/25 shrink-0">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Website leads</p>
+                      <p className="text-xs text-slate-500 mt-0.5 font-medium">New requests from your website form.</p>
+                    </div>
+                    {unreadCount > 0 && (
+                      <span className="px-2 py-1 rounded-full bg-red-500 text-white text-[10px] font-black">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery('');
+                        setClientsSourceFilter('Website Lead');
+                        setCurrentTab('clients');
+                        markAllWebsiteLeadsRead();
+                        setNotifOpen(false);
+                      }}
+                      className="text-xs font-bold text-emerald-700 hover:text-emerald-800 transition-colors"
+                    >
+                      View All
+                    </button>
+                  </div>
+                </div>
+                <div className="border-b border-white/25 py-2 shrink-0">
+                  {latestWebsiteLeads.length === 0 ? (
+                    <p className="px-4 py-3 text-xs text-slate-500 font-medium">No website leads yet.</p>
+                  ) : (
+                    latestWebsiteLeads.map((lead) => (
+                      <button
+                        key={lead.id}
+                        type="button"
+                        onClick={() => {
+                          setClientsSourceFilter('Website Lead');
+                          setCurrentTab('clients');
+                          markWebsiteLeadsRead([lead.id]);
+                          setNotifOpen(false);
+                        }}
+                        className="flex w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-emerald-500/10 transition-colors"
+                      >
+                        <div className="mt-0.5 w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-900 leading-snug truncate">{lead.name}</p>
+                          <p className="text-xs text-slate-500 mt-0.5 truncate">{lead.contact}</p>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
                 <div className="px-4 py-3 border-b border-white/25 shrink-0">
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Recent activity</p>
                   <p className="text-xs text-slate-500 mt-0.5 font-medium">Priority items match your dashboard signals.</p>

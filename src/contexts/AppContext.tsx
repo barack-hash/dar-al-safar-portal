@@ -52,6 +52,9 @@ interface UIContextType {
   exchangeRatesSource: ExchangeRatesSource;
   convertForDisplay: (amount: number, sourceCurrency: Currency) => number;
   debouncedSearchQuery: string;
+  /** When set (e.g. `'Website Lead'`), Client Portfolio limits rows to this `Client.source`. */
+  clientsSourceFilter: string | null;
+  setClientsSourceFilter: (source: string | null) => void;
   currentTab: Tab;
   setCurrentTab: (tab: Tab) => void;
   isAddClientModalOpen: boolean;
@@ -153,6 +156,7 @@ const ClientsContext = createContext<ClientsContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [clientsSourceFilter, setClientsSourceFilter] = useState<string | null>(null);
   const [currency, setCurrency] = useLocalStorage<Currency>('dasa_currency', 'USD');
   const [currentTab, setCurrentTab] = useState<Tab>('dashboard');
   const [isAddClientModalOpen, setIsAddClientModalOpen] = useState(false);
@@ -470,6 +474,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     exchangeRatesSource,
     convertForDisplay,
     debouncedSearchQuery,
+    clientsSourceFilter,
+    setClientsSourceFilter,
     currentTab,
     setCurrentTab,
     isAddClientModalOpen,
@@ -493,6 +499,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     exchangeRatesSource,
     convertForDisplay,
     debouncedSearchQuery,
+    clientsSourceFilter,
     currentTab,
     isAddClientModalOpen,
     isAddBookingModalOpen,
